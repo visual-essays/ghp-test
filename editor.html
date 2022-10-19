@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <link href="https://visual-essays.github.io/web-app/static/images/favicon.svg" rel="icon" type="image/svg+xml"/>
+  <link href="https://visual-essays.github.io/web-app/static/images/favicon.png" rel="icon" type="image/png"/>
+  <title>Juncture: Editor</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <link href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.css" type="text/css" rel="stylesheet"/>
+
+  <style>
+    [v-cloak] {display: none}
+    * {box-sizing: border-box;}
+    body {max-width:1000px; margin: auto !important;}
+    #editor {display:grid; grid-template-rows: auto auto 1fr; height: 100vh;}
+    #mde {font-family:Roboto,sans-serif; height:100%; overflow-y: hidden;}
+    .EasyMDEContainer {height:calc(100%);}
+    .EasyMDEContainer .CodeMirror {height:calc(100% - 75px); font-size:1.2rem; line-height:1.4; color:#444;}
+    .preview .EasyMDEContainer .CodeMirror {height:calc(100% - 60px);}
+    .editor-preview {padding:0; background-color:white;}
+    .preview .editor-statusbar {display:none;}
+    .cm-ve-tag {color:red;}
+    #mde .fa {font-size:1.2rem}
+  </style>
+</head>
+<body>
+
+  <div id="editor">
+
+    <ve-header
+      v-cloak
+      background="#5B152E"
+      logo="https://raw.githubusercontent.com/visual-essays/media/main/images/Juncture_Logo.png"
+      url="/"
+      contact="Ron.Snyder@ithaka.org"
+    >
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/editor">Editor</a></li>
+        <li><a href="/media-tool">Media tool</a></li>
+        <li><a href="/contact">Contact us</a></li>
+        <li><a href="/Help">Help</a></li>
+        <li>auth</li>
+      </ul>
+    </ve-header>
+
+    <ve-content-path ref="contentSelector" :content-path="contentPath" mode="essays" sticky="true"></ve-content-path>
+
+    <div id="mde" 
+      @paste.prevent="paste" 
+      @drop.prevent="drop" @dragover.prevent @dragover="overDropzone=true" @dragleave="overDropzone=false">
+      <textarea v-cloak ref="content"></textarea>
+    </div>
+
+    <b-modal id="save-modal" title="Save File">
+      <p class="my-4">Save File before changing?</p>
+      <template #modal-footer="{ ok }">
+        <b-button size="sm" @click="changeContent">No</b-button>
+        <b-button size="sm" variant="primary" @click="saveAfterConfirm">Yes</b-button>
+      </template>
+    </b-modal>
+
+    <b-toast id="essay-saved" title="" solid auto-hide-delay="1000" no-close-button><b>Essay save to Github: {{`${saveStatus ? 'success' : 'failed'}`}}</b></b-toast>
+    <b-toast id="link-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Link copied to clipboard:</b>&nbsp;{{link}}</b-toast>
+    <b-toast id="text-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Essay text copied to clipboard</b></b-toast>
+  
+  </div>
+  
+  <!-- This is used for deep linking of Single Page Apps when hosted with GitHub Pages -->
+  <script type="text/javascript">
+    (function(l) {
+      if (l.search[1] === '/' ) {
+        let decoded = l.search.slice(1).split('&').map(s => s.replace(/~and~/g, '&')).join('?')
+        window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash)
+      }
+    }(window.location))
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+  <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+  <script src="https://codemirror.net/5/lib/codemirror.js"></script>
+  <script>
+    let addEl = (args) => {
+      let el = document.createElement(args.tag)
+      Object.keys(args).filter(key => key !== 'tag').forEach(key => el[key] = args[key])
+      document.getElementsByTagName(args.tag === 'script' ? 'body' : 'head')[0].appendChild(el)
+      return el
+    }
+    const isDev = window.location.hostname == 'localhost'
+    const apiEndpoint = isDev ? 'http://localhost:8000' : 'https://api.juncture-digital.org'
+    const wcEndpoint = isDev ? 'http://localhost:3333/build' : 'https://unpkg.com/visual-essays/dist/visual-essays'
+    const iiifEndpoint = isDev ? 'http://localhost:8088' : 'https://iiif.juncture-digital.org'
+    addEl({tag: 'link', rel: 'stylesheet', type: 'text/css', href: `${wcEndpoint}/visual-essays.css`})
+    addEl({tag: 'script', type: 'module', src: `${wcEndpoint}/visual-essays.esm.js`})
+    console.log(`editor: hostname=${window.location.hostname} isDev=${isDev} apiEndpoint=${apiEndpoint} wcEndpoint=${wcEndpoint}`)
+  </script>
+  <script type="module">
+    
+    new Vue({
+    el: '#editor',
+    data: () => ({
+      contentPath: '',
+      pathRoot: '/',
+      ghAuthToken: null,
+      acct: null,
+      repo: null,
+      easyMDE: null,
+      overDropzone: false,
+      isPreviewActive: false,
+      loadedDependencies: [],
+      userCanUpdate: false,
+      saveStatus: '',
+      helpWindow: null
+    }),
+    computed: {
+      isLoggedIn() { return this.ghAuthToken !== null },
+      link() { return this.contentPath ? `https://beta.juncture-digital.org/${this.contentPath.replace(/\/README\.md/,'')}` : null }
+    },
+    created() {
+      this.ghAuthToken = localStorage.getItem('gh-auth-token')
+      window.addEventListener('storage', (evt) => { this.ghAuthToken = localStorage.getItem('gh-auth-token') })
+    },
+    mounted() {
+      this.$refs.contentSelector.addEventListener('contentPathChanged', async (evt) => this.parseContentPath(evt.detail))
+      let pathElems = window.location.pathname.split('/').filter(pe => pe)
+      if (pathElems.length > 0 && pathElems[0] === 'editor') {
+        this.pathRoot = '/editor/'
+        pathElems = pathElems.slice(1)
+      }
+      console.log(pathElems)
+      this.contentPath = pathElems.length === 0
+        ? localStorage.getItem('smde_juncture_path', '')
+        : pathElems.join('/')
+      this.initEditor()
+    },
+    methods: {
+
+      isMarkdownFile(path) {
+        let fname = path.split('?')[0].split('/').pop()
+        return fname.indexOf('.md') === fname.length-3
+      },
+
+      async parseContentPath(newContentPath) {
+
+        localStorage.setItem('pending-content-path', newContentPath)
+
+        if (this.isPreviewActive) EasyMDE.togglePreview(this.easyMDE)
+
+        let priorContentPath = localStorage.getItem('smde_juncture_path')
+        
+        console.log(`parseContentPath: newContentPath=${newContentPath} priorContentPath=${priorContentPath}`)
+
+        if (newContentPath !== priorContentPath && priorContentPath && this.isMarkdownFile(priorContentPath)) {
+          let currentContent = this.easyMDE.value().trim()
+          let currentHash = currentContent.hashCode()
+          let lastRemoteHash = localStorage.getItem('last-remote-save-hash')
+          console.log(`parseContentPath: currentHash=${currentHash} lastRemoteHash=${lastRemoteHash}`)
+          if (currentHash != lastRemoteHash) {
+            localStorage.setItem('remote-staging-content', currentContent)
+            localStorage.setItem('remote-staging-path', this.contentPath)
+            this.$bvModal.show('save-modal')
+          } else {
+            this.changeContent()
+          }
+        } else {
+          this.changeContent()
+        }
+      },
+
+      async changeContent() {
+        let newContentPath = localStorage.getItem('pending-content-path')
+
+        let [source, contentSpec] = newContentPath.split(':')
+        let [contentPath, argsStr] = contentSpec.split('?');
+        [this.acct, this.repo] = contentPath.split('/')
+        let filePath = contentPath.split('/').slice(2).join('/')
+        this.userCanUpdate = await this.$refs.contentSelector.repositoryIsWriteable()
+        console.log(`editor.parseContentPath: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
+
+        if (this.isMarkdownFile(filePath)) {
+          let markdown
+          if (newContentPath === localStorage.getItem('smde_juncture_path')) {
+            markdown = localStorage.getItem('smde_juncture_content')
+            console.log('use locally saved content')
+          } else if (newContentPath === localStorage.getItem('last-remote-save-path')) {
+            markdown = localStorage.getItem('last-remote-save-content')
+            localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+            console.log('use last remote save content')
+          }
+          if (!markdown) {
+            markdown = (await this.$refs.contentSelector.getFile(filePath)).content
+            console.log('use remote content')
+            localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+          }
+          this.easyMDE.value(markdown)
+        } else {
+          this.easyMDE.value('')
+          localStorage.removeItem('last-remote-save-hash')
+        }
+        localStorage.removeItem('pending-content-path')
+        this.contentPath = contentPath
+        if (this.contentPath) localStorage.setItem('smde_juncture_path', newContentPath)
+        window.history.replaceState({}, null, `${this.pathRoot}${contentSpec}`)
+        this.$bvModal.hide('save-modal')
+      },
+
+      initEditor() {
+
+        CodeMirror.defineMode('ve-tag', () => {
+          return {
+            token: function (stream, state) {
+              if (stream.match(/\.ve\-\S+/)) {
+                return 've-tag'
+                /*
+                let ch
+                while ((ch = stream.next()) != null)
+                  if (stream.next() == ' ') {
+                    // stream.eat(' ')
+                    return 've-tag'
+                  }
+                  return 've-tag'
+                */
+              } else {
+                stream.next()
+                return null
+              }
+            }
+          }
+        })
+
+        this.easyMDE = new EasyMDE({
+          previewRender: this.togglePreview,
+          autosave: {
+            enabled: true,
+            uniqueId: 'juncture_content'
+          },
+          hideIcons: ['side-by-side', 'fullscreen', 'guide'],
+          spellChecker: false,
+          indentWithTabs: false,
+          unorderedListStyle: '-',
+          overlayMode: {
+            mode: CodeMirror.getMode({}, 've-tag'),
+            combine: false,
+          },
+          toolbar: ['undo', 'redo', '|', 'bold', 'italic', 'heading', 'quote', 'unordered-list', 'ordered-list', 'link', '|', 'preview',
+            {
+              class: 'help',
+              action: () => {this.showHelp()},
+              className: 'fa fa-question',
+              title: 'Help',
+              attributes: {id: 'help'}
+            },            {
+            class: 'save',
+              action: () => {this.saveFile()},
+              className: 'fa fa-save',
+              title: 'Save file',
+              attributes: {id: 'save'}
+            },
+            {
+              class: 'launch',
+              action: () => {this.launch()},
+              className: 'fa fa-external-link',
+              title: 'Launch',
+              attributes: {id: 'launch'}
+            }
+          ]
+        })
+        // if (this.contentPath) localStorage.setItem('smde_juncture_path', this.contentPath)
+        document.getElementById('save').style.display = this.userCanUpdate ? 'block' : 'none'
+        this.easyMDE.codemirror.on('paste', (_, evt) => evt.preventDefault())
+        this.easyMDE.codemirror.on('drop', (_, evt) => evt.preventDefault())
+        /*
+        this.simplemde.codemirror.on('drop', (_, evt) => evt.preventDefault())
+        // this.simplemde.codemirror.on('change', _.debounce(() => this.saveFile(), 10000))
+        this.simplemde.codemirror.on('drop', (_, evt) => evt.preventDefault())
+        this.fileTitle = this.fileTitle || localStorage.getItem(`${this.userHash}/file-title`) || 'default'
+        */
+      },
+
+      copyLink() {
+        navigator.clipboard.writeText(this.fileLinkShort)
+      },
+
+      copyText() {
+        navigator.clipboard.writeText(this.simplemde.value())
+      },
+
+      launch() {
+        window.open(this.link, '_blank')
+      },
+
+      showHelp() {
+        this.openWindow(`${webappHost}/a3b5125/help/`, `toolbar=no,location=no,left=0,top=0,width=800,height=800,scrollbars=no,status=no`)
+      },
+
+      showHelp() {
+        if (this.helpWindow) { this.helpWindow.close() }
+        let isDev = window.location.hostname === 'localhost' || window.location.hostname.indexOf('192.168.') === 0
+        let url = !isDev 
+          ? `http://${window.location.hostname}:8080/help`
+          : 'https://beta.juncture-digital.org/help'
+        let options = 'toolbar=yes,location=yes,left=0,top=0,width=1040,height=1200,scrollbars=yes,status=yes'
+        this.helpWindow = window.open(url, '_blank', options)
+      },
+
+      async saveAfterConfirm() {
+        console.log('saveAfterConfirm')
+        let path = localStorage.getItem('remote-staging-path')
+        let markdown = localStorage.getItem('remote-staging-content')
+        this.saveStatus = await this.$refs.contentSelector.putFile(path, markdown)
+        if (this.saveStatus === true) localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+        localStorage.removeItem('remote-staging-path')
+        localStorage.removeItem('remote-staging-content')
+        this.$bvToast.show('essay-saved')
+        this.$bvModal.hide('save-modal')
+        this.changeContent(localStorage.getItem('pending-content-path'))
+      },
+    
+      async saveFile() {
+        let path = localStorage.getItem('smde_juncture_path')
+        let markdown = this.easyMDE.value().trim()
+        localStorage.setItem('smde_juncture_content', markdown)
+        this.saveStatus = await this.$refs.contentSelector.putFile(path, markdown)
+        if (this.saveStatus === true) {
+          localStorage.setItem('last-remote-save-path', path)
+          localStorage.setItem('last-remote-save-content', markdown)
+          localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+        }
+        this.$bvToast.show('essay-saved')
+      },
+
+      togglePreview(markdown, preview) {
+        console.log(`previewRender: isPreviewActive=${this.isPreviewActive} ${this.easyMDE.isPreviewActive()}`)
+        if (this.isPreviewActive) {
+          this.isPreviewActive = false
+          this.loadedDependencies.forEach(el => el.parentElement.removeChild(el))
+          this.loadedDependencies = []
+        } else {
+          this.isPreviewActive = true
+          let body = {'prefix': `${this.acct}/${this.repo}`, 'markdown': markdown}
+          fetch(`${apiEndpoint}/html/?inline=true`, {method: 'POST', body: JSON.stringify(body)})
+            .then(resp => resp.text())
+            .then(html => {
+              let htmlEls = new DOMParser().parseFromString(html, 'text/html').children[0].children
+              let head = htmlEls[0]
+              let body = htmlEls[1]
+              // Array.from(body.querySelectorAll('ve-image')).forEach(veImg => veImg.setAttribute('auth-token', this.authToken))
+              preview.innerHTML = body.innerHTML
+              this.loadDependencies(head.querySelectorAll('link[rel="stylesheet"]'), 0, () => this.loadDependencies(head.querySelectorAll('style'), 0, null))
+              this.loadDependencies(body.querySelectorAll('script'), 0, null)
+            })
+          return ''
+        }
+      },
+
+      loadDependencies(dependencies, i, callback) {
+        if (dependencies.length > 0) {
+          this.load(dependencies.item(i), () => {
+            if (i < dependencies.length-1) this.loadDependencies(dependencies, i+1, callback) 
+            else if (callback) callback()
+          })
+        }
+      },
+  
+      load(srcEl, callback) {
+        let e
+        if (srcEl.localName  === 'link') {
+          e = addEl({tag: 'link', rel: srcEl.rel, type: 'text/css',  href: srcEl.href.replace(/https:\/\/unpkg\.com\/visual-essays\/dist\/visual-essays/, wcEndpoint)})
+          e.addEventListener('load', callback)
+          this.loadedDependencies.push(e)
+        } else if (srcEl.localName  === 'style') {
+          e = addEl({tag: 'style', type: 'text/css', textContent: srcEl.textContent})
+          e.addEventListener('load', callback)
+          this.loadedDependencies.push(e)
+        } else if (srcEl.localName  === 'script') {
+          let elArgs = {tag: 'script'}
+          if (srcEl.type) elArgs.type = srcEl.type
+          if (srcEl.src) elArgs.src = srcEl.src.replace(/https:\/\/unpkg\.com\/visual-essays\/dist\/visual-essays/, wcEndpoint)
+          else elArgs.text = srcEl.text
+          e = addEl(elArgs)
+          this.loadedDependencies.push(e)
+          if (e.src) e.addEventListener('load', callback)
+          else callback()
+        }
+      },
+
+      drop(e) {
+        let cursorPos = this.easyMDE.codemirror.coordsChar({left:e.pageX, top:e.pageY})
+        let inputText = ''
+        console.log('drop', inputText)
+        if (e.dataTransfer) inputText = decodeURI(e.dataTransfer.getData('Text') || e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list'))
+        if (inputText && isURL(inputText)) {
+          let url = inputText
+          let parsed = new URL(url)
+          let manifestUrl = parsed.searchParams.get('manifest')
+          if (manifestUrl) {
+            let imageId = manifestUrl.indexOf(iiifEndpoint) > 0 && manifestUrl.indexOf('manifest.json') > 0
+              ? manifestUrl.split('/').slice(-2,-1).pop()
+              : manifestUrl
+              this.insertAtCursor(cursorPos, `.ve-image ${decodeURIComponent(imageId)}\n`)
+          } else {
+            this.getManifestUrl(url).then((manifestUrl) => {
+              let imageId = manifestUrl.split('/').slice(3,-1).join('/')
+              if (cursorPos.line === 0) {
+                this.insertAtCursor(cursorPos, `.ve-header "File Title" ${imageId}\n`)
+              } else {
+                this.insertAtCursor(cursorPos, `\n.ve-image ${imageId}\n`)
+              }
+            })
+          }
+        }
+      },
+
+      paste(e) {
+        let pastedText = e.clipboardData?.getData('Text') || ''
+        console.log(`paste: text=${pastedText} isURL=${isURL(pastedText)}`)
+        if (isURL(pastedText)) {
+          let manifestUrl = (new URL(pastedText)).searchParams.get('manifest')
+          if (manifestUrl) {
+            let imageId = manifestUrl.indexOf(iiifEndpoint) > 0 && manifestUrl.indexOf('manifest.json') > 0
+              ? manifestUrl.split('/').slice(-2,-1).pop()
+              : manifestUrl
+            this.easyMDE.codemirror.replaceSelection(`\n.ve-image ${decodeURIComponent(imageId)}\n`)
+          } else {
+            this.getManifestUrl(pastedText).then((manifestUrl) => {
+              manifestUrl = manifestUrl.indexOf(iiifEndpoint) === 0
+                ? decodeURIComponent(manifestUrl.split('/').slice(3,-1).join('/'))
+                : manifestUrl
+              let viewer = manifestUrl.indexOf('youtube.com') > 0 ? 'video' : 'image'
+              this.easyMDE.codemirror.replaceSelection(`\n.ve-${viewer} ${manifestUrl}`)
+            })
+          }
+        } else {
+          this.easyMDE.codemirror.replaceSelection(pastedText)
+        }
+      },
+
+      async getManifestUrl(imageUrl) {
+        imageUrl = imageUrl.split('#')[0]
+        let resp = await fetch(`${isDev ? 'http://localhost:8088' : iiifEndpoint}/?url=${encodeURIComponent(imageUrl)}`)
+        return await resp.text()
+      },
+  
+      insertAtCursor(pos, text) {
+        let priorLine = this.easyMDE.codemirror.getRange({line:pos.line-2, char:0}, pos).trim().split(/\s/)
+        if (priorLine.length > 0 && priorLine[0] === '.ve-image') {
+          let merged = '.ve-image\n'
+          merged += `    - ${priorLine.slice(1).join(' ')}\n`
+          merged += `    - ${text.split(/\s/).slice(1).join(' ')}\n`
+          this.easyMDE.codemirror.setSelection({line:pos.line-1,ch:0}, {line:pos.line})
+          this.easyMDE.codemirror.replaceSelection(merged)
+        } else {
+          pos.ch = 0
+          this.easyMDE.codemirror.setSelection(pos, pos)
+          this.easyMDE.codemirror.replaceSelection(text)
+        }
+      }
+
+    },
+    watch: {
+      async isLoggedIn(isLoggedIn) {
+        this.userCanUpdate = this.$refs.contentSelector.repositoryIsWriteable
+          ? await this.$refs.contentSelector.repositoryIsWriteable()
+          : false
+        console.log(`isLoggedIn=${isLoggedIn}`)
+      },
+      userCanUpdate(canUpdate) {
+        console.log(`canUpdate=${canUpdate}`)
+        document.getElementById('save').style.display = this.userCanUpdate ? 'inline-block' : 'none'
+      }
+    }
+  })
+  Vue.config.productionTip = false
+  Vue.config.devtools = true
+
+  String.prototype.hashCode = function() {
+    var hash = 0, i, chr
+    if (this.length === 0) return hash
+    for (i = 0; i < this.length; i++) {
+      chr = this.charCodeAt(i)
+      hash = ((hash << 5) - hash) + chr
+      hash |= 0; // Convert to 32bit integer
+    }
+    return hash
+  }
+  
+  function isURL(str) { return /^https*:\/\//.test(str) }
+  </script>
+
+</body>
+</html>

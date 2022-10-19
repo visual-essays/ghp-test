@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <link href="https://visual-essays.github.io/web-app/static/images/favicon.svg" rel="icon" type="image/svg+xml"/>
+  <link href="https://visual-essays.github.io/web-app/static/images/favicon.png" rel="icon" type="image/png"/>
+  <title>Juncture: Annotator</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet" />
+  <link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap/dist/css/bootstrap.min.css" />
+  <link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" integrity="sha512-KfkfwYDsLkIlwQp6LFnl8zNdLGxu9YAA1QvwINks4PhcElQSvqcyVLLD9aMhXd13uQjoXtEKNosOWaZqXgel0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.6/dist/annotorious.min.css">
+
+  <style>
+    [v-cloak] {display: none}
+    * {box-sizing: border-box;}
+    body {max-width:1000px; margin: auto !important;}
+    main {width:100%; height: calc(100vh - 50px); padding: 50px 0;}
+    #osd { width:100%; height:100%}
+    .container {width:100%; height:100%; display:flex; gap:12px; padding:12px;}
+    .overDropzone {position:absolute; left:0; background:rgba(0,0,0,.1);}
+    .annotations ul {padding:0; list-style:none;}
+    .annotations li {clear: both; margin-bottom: 18px;}
+    .anno {display:flex; align-content:flex-start; margin-bottom: 18px; overflow:auto; font-size:0.9em;}
+    .anno img {float:left; padding:0 12px 0 0; cursor:pointer;}
+    .r6o-editor {width: 300px;}
+    /*.r6o-editor-inner div:nth-last-of-type(2) {display: none}*/
+    .a9s-toolbar .a9s-toolbar-btn{width:30px;height:30px;padding:0;}
+    .anno-header, .depicts-header {display:flex;align-content:center;gap:9px;}
+    .depicts-dialog-icon{color:red;}
+    .help-dialog::part(panel){max-height:75vh; overflow-y:scroll;}
+    .anno-copy::part(base){padding-top:0;}
+  </style>
+</head>
+<body>
+
+  <div id="app">
+  
+    <ve-header
+      v-cloak
+      background="#5B152E"
+      logo="https://raw.githubusercontent.com/visual-essays/media/main/images/Juncture_Logo.png"
+      contact="Ron.Snyder@ithaka.org"
+      
+    >
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/editor">Editor</a></li>
+        <li><a href="/media">Media tool</a></li>
+        <li><a href="/contact">Contact us</a></li>
+        <li>auth</li>
+      </ul>
+    </ve-header>
+
+    <ve-content-path ref="contentSelector" :content-path="contentPath" mode="essays" sticky="true"></ve-content-path>
+
+    <main v-cloak>
+      <div v-if="isLoggedIn && !manifestUrl" style="padding:12px;">Drag IIIF manifest into window</div>
+      <div v-if="isLoggedIn" class="container">
+        
+        <div class="image" style="height:100%; width:100%;">
+          <div id="osd"></div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:18px;" v-if="manifestUrl" style="width:300px;" v-cloak>
+          <div class="depicts">
+            <div class="depicts-header">
+              <div><b>Entities</b><em> (people, places, etc) </em><b>depicted in image</b></div>
+              <b-button name="pencil" @click="openDepicts"></b-button>
+            </div>
+            <ve-depicts :manifest="manifestUrl" :editable="true"></ve-depicts>
+          </div>
+          
+          <div class="annotations">
+            <div class="anno-header">
+              <div style="margin-top:12px;display:inline-block;"><b>Image annotations</b></div>
+              <div id="toolbar" style="display:inline-block;"></div>
+            </div>
+            <ul>
+              <li v-for="anno in annotations" :key="anno.id">
+                <div class="anno" @mouseEnter="hoverAnno = anno" @mouseLeave="hoverAnno = null">
+                  <img @click="selectAnno = selectAnno ? null : anno" :src="annoThumbnail(anno)"/>
+                  <div v-html="anno.body[0].value"></div>
+                  <div>
+                    <b-button class="anno-copy" @click="copyTextToClipboard(anno.id.split('/').pop())" name="clipboard" label="Copy annotation ID"></b-button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <div v-cloak v-else class="main">
+        Please login to use the editor
+      </div>
+
+    </main>
+  
+  </div>
+  
+  <!-- This is used for deep linking of Single Page Apps when hosted with GitHub Pages -->
+  <script type="text/javascript">
+    (function(l) {
+      if (l.search[1] === '/' ) {
+        let decoded = l.search.slice(1).split('&').map(s => s.replace(/~and~/g, '&')).join('?')
+        window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash)
+      }
+    }(window.location))
+  </script>
+  <script>
+    let addEl = (args) => {
+      let el = document.createElement(args.tag)
+      Object.keys(args).filter(key => key !== 'tag').forEach(key => el[key] = args[key])
+      document.getElementsByTagName(args.tag === 'script' ? 'body' : 'head')[0].appendChild(el)
+      return el
+    }
+    const isDev = window.location.hostname == 'localhost'
+    const iiifServer = 'https://iiif.juncture-digital.org'
+    const apiEndpoint = isDev ? 'http://localhost:8000' : 'https://api.juncture-digital.org'
+    const wcEndpoint = isDev ? 'http://localhost:3333/build' : 'https://unpkg.com/visual-essays/dist/visual-essays'
+    const annotationsEndpoint = isDev ? 'http://localhost:8000' : 'https://api.juncture-digital.org'
+
+    addEl({tag: 'link', rel: 'stylesheet', type: 'text/css', href: `${wcEndpoint}/visual-essays.css`})
+    addEl({tag: 'script', type: 'module', src: `${wcEndpoint}/visual-essays.esm.js`})
+    console.log(`annotator: hostname=${window.location.hostname} isDev=${isDev} apiEndpoint=${apiEndpoint} iiifServer=${iiifServer} wcEndpoint=${wcEndpoint} annotationsEndpoint=${annotationsEndpoint}`)
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/openseadragon@3.0.0/build/openseadragon/openseadragon.min.js" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.6/dist/openseadragon-annotorious.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-toolbar@0.1.1/dist/annotorious-toolbar.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+  <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
+  <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue-icons.min.js"></script>
+  <script type="module">
+
+    new Vue({
+    el: '#app',
+    data: () => ({
+      manifestUrl: '',
+      manifest: null,
+      contentPath: '',
+      imageHash: null,
+      pathRoot: '/',
+      ghAuthToken: null,
+      acct: null,
+      repo: null,
+      userCanUpdate: false,
+      annotations: [],
+      hoverAnno: null,
+      selectAnno: null
+
+    }),
+    computed: {
+      isLoggedIn() { return this.ghAuthToken !== null },
+      annoPath() { return this.imageHash ? `${this.contentPath}/${this.imageHash}` : null}
+    },
+    created() {
+      this.ghAuthToken = localStorage.getItem('gh-auth-token')
+      window.addEventListener('storage', (evt) => { this.ghAuthToken = localStorage.getItem('gh-auth-token') })
+      let pathElems = window.location.pathname.split('/').filter(pe => pe)
+      if (pathElems.length > 0 && pathElems[0] === 'annotator') {
+        this.pathRoot = `/${pathElems[0]}/`
+        pathElems = pathElems.slice(1)
+      }
+      let qargs = new URL(location.href).searchParams
+      this.manifestUrl = qargs.get('manifest')
+      this.contentPath = qargs.has('anno-base') ? qargs.get('anno-base') : pathElems.join('/')
+      console.log(`annotator.created: manifest=${this.manifestUrl} contentPath=${this.contentPath}`)
+    },
+    mounted() {
+      this.$refs.contentSelector.addEventListener('contentPathChanged', async (evt) => this.parseContentPath(evt.detail))
+    },
+    methods: {
+
+      async parseContentPath(path) {
+        let [source, contentSpec] = path.split(':')
+        let [contentPath, argsStr] = contentSpec.split('?');
+        [this.acct, this.repo] = contentPath.split('/')
+        let filePath = contentPath.split('/').slice(2).join('/')
+        this.userCanUpdate = await this.$refs.contentSelector.repositoryIsWriteable()
+        console.log(`annotator: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
+        this.contentPath = contentPath
+        window.history.replaceState({}, null, `${this.pathRoot}${contentSpec}/?manifest=${this.manifestUrl}`)
+      },
+
+      initOSD() {
+        this.viewer = OpenSeadragon({
+          id: 'osd',
+          prefixUrl: 'https://openseadragon.github.io/openseadragon/images/',
+          minZoomImageRatio: 0.2,
+          maxZoomPixelRatio: 5
+        })
+        this.annotator = OpenSeadragon.Annotorious(this.viewer, { widgets: ['COMMENT'] })
+        Annotorious.Toolbar(this.annotator, document.getElementById('toolbar'))
+        this.annotator.on('createAnnotation', async (anno) => this.createAnnotation(anno))
+        this.annotator.on('updateAnnotation', async (anno) => this.updateAnnotation(anno))
+        this.annotator.on('deleteAnnotation', async (anno) => this.deleteAnnotation(anno))
+      },
+
+      getManifest() {
+        fetch(this.manifestUrl.replace(/\?/,'%3F')).then(resp => resp.json())
+          .then(manifest =>
+            !Array.isArray(manifest['@context']) && parseFloat(manifest['@context'].split('/').slice(-2,-1).pop()) < 3
+              ? fetch('https://api.visual-essays.net/prezi2to3/', {
+                method: 'POST', body: JSON.stringify(manifest)}).then(resp => resp.json())
+              : Promise.resolve(manifest)
+          )
+          .then(manifest => this.manifest = manifest)
+      },
+
+      openDepicts() {
+        document.querySelector('ve-depicts').edit()
+      },
+
+      findItem(toMatch, current, seq) {
+        seq = seq || 1
+        const found = this._findItems(toMatch, current)
+        return found.length >= seq ? found[seq-1] : null
+      },
+
+      _findItems(toMatch, current, found) {
+        found = found || []
+        if (current.items) {
+          for (let i = 0; i < current.items.length; i++ ) {
+            let item = current.items[i]
+            let isMatch = !Object.entries(toMatch).find(([attr, val]) => item[attr] && item[attr] !== val)
+            if (isMatch) found.push(item)
+            else this._findItems(toMatch, item, found)
+          }
+        }
+        return found
+      },
+
+      hashStr(s) { return sha256(s) },
+
+      async loadAnnotations() {
+        let annotations = []
+        let url = `${annotationsEndpoint}/annotations/${this.annoPath}/`
+        let resp = await fetch(url, {
+          headers: {
+            // Accept: 'application/ld+json;profile="http://www.w3.org/ns/anno.jsonld'
+          }
+        })
+        if (resp.ok) {
+          resp = await resp.json()
+          this._target = resp.target
+          annotations = resp.annotations
+          this.annotator.setAnnotations(resp.annotations)
+        }
+        console.log(`loadAnnotations: url=${url}`, annotations)
+        this.annotations = this.annotator.getAnnotations()
+      },
+      
+      async createAnnotation(anno) {
+        anno.id = this.hashStr(anno.id).slice(0,8)
+        anno.target.id = this.imageHash
+        let resp = await fetch(`${annotationsEndpoint}/annotation/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/ld+json;profile="http://www.w3.org/ns/anno.jsonld',
+            // Accept: 'application/ld+json;profile="http://www.w3.org/ns/anno.jsonld',
+            Authorization: `Token: ${this.ghAuthToken}`
+          },
+          body: JSON.stringify({annotation: anno, path: this.annoPath})
+        })
+        if (resp.ok && resp.status === 201) {
+          this.annotator.setAnnotations(this.annotator.getAnnotations())
+          this.annotations = this.annotator.getAnnotations()
+        } else {
+          console.log(`createAnnotation: unexpected resp_code=${resp.status}`)
+        }
+      },
+
+      async updateAnnotation(anno) {
+        anno.target.id = this._target
+        let url = `${annotationsEndpoint}/annotation/${this.annoPath}/${anno.id.split('/').pop()}/`
+        console.log(`updateAnnotation: url=${url}`)
+        let resp = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/ld+json;profile="http://www.w3.org/ns/anno.jsonld',
+            // Accept: 'application/ld+json;profile="http://www.w3.org/ns/anno.jsonld',
+            Authorization: `Bearer: ${this.ghAuthToken}`
+          },
+          body: JSON.stringify(anno)
+        })
+        if (resp.status === 202) {
+          this.annotations = this.annotator.getAnnotations()
+        } else {
+          console.log(`updateAnnotation: unexpected resp_code=${resp.status}`)
+        }
+      },
+
+      async deleteAnnotation(anno) {
+        let resp = await fetch(`${annotationsEndpoint}/annotation/${this.annoPath}/${anno.id.split('/').pop()}/`, {
+          method: 'DELETE',
+          headers: {Authorization: `Bearer: ${this.ghAuthToken}`}
+        })
+        if (resp.status === 204) {
+          this.annotations = this.annotator.getAnnotations()
+        } else {
+          console.log(`deleteAnnotation: unexpected resp_code=${resp.status}`)
+        }
+      },
+
+      annoThumbnail(anno) {
+        let serviceHost = (this.imageInfo.service[0].id || this.imageInfo.service[0]['@id']).replace(/\/info\.json$/,'')
+        let coords = anno.target.selector.value.split(':').pop().split(',').map(n => Math.round(n))
+        return `${serviceHost}/${coords.join(',')}/80,/0/default.jpg`
+      },
+
+    },
+    watch: {
+      manifestUrl() {
+        if (this.manifestUrl && this.isLoggedIn) this.getManifest()
+      },
+      isLoggedIn() {
+        if (this.manifestUrl && this.isLoggedIn) this.getManifest()
+      },
+      manifest(manifest) {
+        this.imageInfo = this.findItem({type:'Annotation', motivation:'painting'}, manifest).body
+        if (this.isLoggedIn) {
+          if (!this.viewer) this.initOSD()
+          this.$nextTick(() => {
+            let tileSource = this.imageInfo.service
+              ? `${(this.imageInfo.service[0].id || this.imageInfo.service[0]['@id']).replace(/\/info\.json$/,'')}/info.json`
+              : { url: this.imageInfo.id, type: 'image', buildPyramid: true }
+            this.viewer.open(tileSource)
+            this.imageHash = this.hashStr(this.imageInfo.id).slice(0,8)
+          })
+        }
+      },
+      annoPath() {
+        if (this.annoPath) {
+          this.loadAnnotations()
+        }
+      },
+      hoverAnno(anno, prior) {
+        if (prior) document.querySelector(`[data-id="${prior.id}"]`).classList.remove('hover')
+        if (anno) document.querySelector(`[data-id="${anno.id}"]`).classList.add('hover')
+      },
+      selectAnno(anno) {
+        this.annotator.selectAnnotation(anno)
+      }
+    }
+  })
+  Vue.config.productionTip = false
+  Vue.config.devtools = true
+
+  </script>
+
+</body>
+</html>

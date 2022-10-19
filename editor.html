@@ -23,6 +23,16 @@
     .preview .editor-statusbar {display:none;}
     .cm-ve-tag {color:red;}
     #mde .fa {font-size:1.2rem}
+    .cm-s-easymde .cm-header-1{font-size: calc(1rem + 1vw);}
+    .cm-s-easymde .cm-header-2{font-size: calc(1rem + .8vw);}
+    .cm-s-easymde .cm-header-3{font-size: calc(1rem + .7vw);}
+    .cm-s-easymde .cm-header-4{font-size: calc(1rem + .6vw);}
+    .cm-s-easymde .cm-header-5{font-size: calc(1rem + .5vw);}
+    .cm-s-easymde .cm-header-6{font-size: calc(1rem + .5vw);}
+    .editor-toolbar {display: flex;}
+    button.preview, #help, #save, #launch {font-size: 1.5rem; color:#5B152E;}
+    button.preview i, #mde #help i, #mde #save i, #mde #launch i {font-size: 1.4rem;}
+    button.preview {margin-left:auto;}
   </style>
 </head>
 <body>
@@ -62,7 +72,7 @@
       </template>
     </b-modal>
 
-    <b-toast id="essay-saved" title="" solid auto-hide-delay="1000" no-close-button><b>Essay save to Github: {{`${saveStatus ? 'success' : 'failed'}`}}</b></b-toast>
+    <b-toast id="essay-saved" title="" solid :auto-hide-delay="saveStatus.status === 200 ? 1000 : 10000" no-close-button><b>Essay save to Github: {{`${saveStatus.status === 200 ? 'success' : 'failed (' + saveStatus.status + ')'} ${saveStatus.statusText}`}}</b></b-toast>
     <b-toast id="link-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Link copied to clipboard:</b>&nbsp;{{link}}</b-toast>
     <b-toast id="text-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Essay text copied to clipboard</b></b-toast>
   
@@ -70,16 +80,14 @@
   
   <!-- This is used for deep linking of Single Page Apps when hosted with GitHub Pages -->
   <script type="text/javascript">
-   console.log(window.location)
-    /*
     (function(l) {
       if (l.search[1] === '/' ) {
         let decoded = l.search.slice(1).split('&').map(s => s.replace(/~and~/g, '&')).join('?')
         window.history.replaceState(null, null, l.pathname + decoded + l.hash)
       }
     }(window.location))
-    */
   </script>
+
   <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
   <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
@@ -119,7 +127,8 @@
     }),
     computed: {
       isLoggedIn() { return this.ghAuthToken !== null },
-      link() { return this.contentPath ? `https://beta.juncture-digital.org/${this.contentPath.replace(/\/README\.md/,'')}` : null }
+      webHost() { return isDev ? 'http://localhost:8080' : 'https://beta.juncture-digital.org' },
+      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays/,'').replace(/\/README\.md/,'')}` : null }
     },
     created() {
       this.ghAuthToken = localStorage.getItem('gh-auth-token')
@@ -214,8 +223,9 @@
         CodeMirror.defineMode('ve-tag', () => {
           return {
             token: function (stream, state) {
-              if (stream.match(/\.ve\-\S+/)) {
-                return 've-tag'
+              if (stream.sol()) {
+                if (stream.match(/\.ve\-\S+/)) return 've-tag'
+                else stream.next()
                 /*
                 let ch
                 while ((ch = stream.next()) != null)
@@ -282,15 +292,12 @@
         */
       },
 
-      copyLink() {
-        navigator.clipboard.writeText(this.fileLinkShort)
-      },
-
       copyText() {
-        navigator.clipboard.writeText(this.simplemde.value())
+        navigator.clipboard.writeText(this.easyMDE.value())
       },
 
       launch() {
+        console.log(`link=${this.link}`)
         window.open(this.link, '_blank')
       },
 
@@ -313,7 +320,7 @@
         let path = localStorage.getItem('remote-staging-path')
         let markdown = localStorage.getItem('remote-staging-content')
         this.saveStatus = await this.$refs.contentSelector.putFile(path, markdown)
-        if (this.saveStatus === true) localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+        if (this.saveStatus.status === 200) localStorage.setItem('last-remote-save-hash', markdown.hashCode())
         localStorage.removeItem('remote-staging-path')
         localStorage.removeItem('remote-staging-content')
         this.$bvToast.show('essay-saved')
@@ -326,7 +333,7 @@
         let markdown = this.easyMDE.value().trim()
         localStorage.setItem('smde_juncture_content', markdown)
         this.saveStatus = await this.$refs.contentSelector.putFile(path, markdown)
-        if (this.saveStatus === true) {
+        if (this.saveStatus.status === 200) {
           localStorage.setItem('last-remote-save-path', path)
           localStorage.setItem('last-remote-save-content', markdown)
           localStorage.setItem('last-remote-save-hash', markdown.hashCode())

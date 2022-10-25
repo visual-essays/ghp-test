@@ -33,7 +33,13 @@
       </ul>
     </ve-header>
 
-    <ve-content-path ref="contentSelector" :content-path="contentPath" mode="media" sticky="true"></ve-content-path>
+    <ve-content-path ref="contentSelector" 
+      :content-path="contentPath"
+      mode="media"
+      sticky="true"
+    ></ve-content-path>
+
+    <ve-add-media-resource-dialog ref="addMedia" :show="false" :contentPath="contentPath"></ve-add-media-resource-dialog>
 
     <ve-image-grid as-cards>
       <ul>
@@ -99,6 +105,7 @@
     },
     mounted() {
       this.$refs.contentSelector.addEventListener('contentPathChanged', async (evt) => this.parseContentPath(evt.detail))
+      this.$refs.contentSelector.addEventListener('addMediaResource', this.addMediaResource)
       let pathElems = window.location.href.slice(window.origin.length+1).split('/').filter(pe => pe)
       if (pathElems.length > 0 && pathElems[0] === 'media') {
         this.pathRoot = `/${pathElems[0]}/`
@@ -119,6 +126,11 @@
         this.contentPath = contentPath
         window.history.replaceState({}, null, `${this.pathRoot}${contentSpec}`)
         this.dirList = (await this.$refs.contentSelector.getDirList()).map(item => {item.root = root; return item})
+      },
+
+      addMediaResource(evt) {
+        console.log('addMediaResource', evt)
+        this.$refs.addMedia.show = true
       }
 
     },

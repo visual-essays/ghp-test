@@ -30,8 +30,8 @@
     .cm-s-easymde .cm-header-5{font-size: calc(1rem + .5vw);}
     .cm-s-easymde .cm-header-6{font-size: calc(1rem + .5vw);}
     .editor-toolbar {display: flex;}
-    button.preview, #help, #save, #launch {font-size: 1.5rem; color:#5B152E;}
-    button.preview i, #mde #help i, #mde #save i, #mde #launch i {font-size: 1.4rem;}
+    button.preview, #help, #save, #launch, #copy {font-size: 1.5rem; color:#5B152E;}
+    button.preview i, #mde #help i, #mde #save i, #mde #launch i, #mde #copy i {font-size: 1.4rem;}
     button.preview {margin-left:auto;}
   </style>
 </head>
@@ -49,7 +49,7 @@
       <ul>
         <li><a href="/">Home</a></li>
         <li><a href="/editor">Editor</a></li>
-        <li><a href="/media">Media tool</a></li>
+        <li><a href="/media" target="_blank">Media tool</a></li>
         <li><a href="/contact">Contact us</a></li>
         <li><a href="/Help">Help</a></li>
         <li>auth</li>
@@ -128,7 +128,7 @@
     computed: {
       isLoggedIn() { return this.ghAuthToken !== null },
       webHost() { return isDev ? 'http://localhost:8080' : 'https://beta.juncture-digital.org' },
-      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays/,'').replace(/\/README\.md/,'')}` : null }
+      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays\//,'').replace(/\/README\.md/,'')}` : null }
     },
     created() {
       this.ghAuthToken = localStorage.getItem('gh-auth-token')
@@ -141,7 +141,6 @@
         this.pathRoot = '/editor/'
         pathElems = pathElems.slice(1)
       }
-      console.log(pathElems)
       this.contentPath = pathElems.length === 0
         ? localStorage.getItem('smde_juncture_path', '')
         : pathElems.join('/')
@@ -198,13 +197,13 @@
             console.log('use locally saved content')
           } else if (newContentPath === localStorage.getItem('last-remote-save-path')) {
             markdown = localStorage.getItem('last-remote-save-content')
-            localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+            localStorage.setItem('last-remote-save-hash', markdown.trim().hashCode())
             console.log('use last remote save content')
           }
           if (!markdown) {
             markdown = (await this.$refs.contentSelector.getFile(filePath)).content
             console.log('use remote content')
-            localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+            localStorage.setItem('last-remote-save-hash', markdown.trim().hashCode())
           }
           this.easyMDE.value(markdown)
         } else {
@@ -264,14 +263,19 @@
               className: 'fa fa-question',
               title: 'Help',
               attributes: {id: 'help'}
-            },            {
+            }, {
             class: 'save',
               action: () => {this.saveFile()},
               className: 'fa fa-save',
               title: 'Save file',
               attributes: {id: 'save'}
-            },
-            {
+            }, {
+            class: 'copy',
+              action: () => {this.copyText()},
+              className: 'fa fa-copy',
+              title: 'Copy text',
+              attributes: {id: 'copy'}
+            }, {
               class: 'launch',
               action: () => {this.launch()},
               className: 'fa fa-external-link',
@@ -297,20 +301,15 @@
       },
 
       launch() {
-        console.log(`link=${this.link}`)
         window.open(this.link, '_blank')
-      },
-
-      showHelp() {
-        this.openWindow(`${webappHost}/a3b5125/help/`, `toolbar=no,location=no,left=0,top=0,width=800,height=800,scrollbars=no,status=no`)
       },
 
       showHelp() {
         if (this.helpWindow) { this.helpWindow.close() }
         let isDev = window.location.hostname === 'localhost' || window.location.hostname.indexOf('192.168.') === 0
         let url = !isDev 
-          ? `http://${window.location.hostname}:8080/help`
-          : 'https://beta.juncture-digital.org/help'
+          ? `http://${window.location.hostname}:8080/docs`
+          : 'https://beta.juncture-digital.org/docs'
         let options = 'toolbar=yes,location=yes,left=0,top=0,width=1040,height=1200,scrollbars=yes,status=yes'
         this.helpWindow = window.open(url, '_blank', options)
       },
@@ -320,7 +319,7 @@
         let path = localStorage.getItem('remote-staging-path')
         let markdown = localStorage.getItem('remote-staging-content')
         this.saveStatus = await this.$refs.contentSelector.putFile(path, markdown)
-        if (this.saveStatus.status === 200) localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+        if (this.saveStatus.status === 200) localStorage.setItem('last-remote-save-hash', markdown.trim().hashCode())
         localStorage.removeItem('remote-staging-path')
         localStorage.removeItem('remote-staging-content')
         this.$bvToast.show('essay-saved')
@@ -336,7 +335,7 @@
         if (this.saveStatus.status === 200) {
           localStorage.setItem('last-remote-save-path', path)
           localStorage.setItem('last-remote-save-content', markdown)
-          localStorage.setItem('last-remote-save-hash', markdown.hashCode())
+          localStorage.setItem('last-remote-save-hash', markdown.trim().hashCode())
         }
         this.$bvToast.show('essay-saved')
       },
@@ -406,15 +405,15 @@
           let parsed = new URL(url)
           let manifestUrl = parsed.searchParams.get('manifest')
           if (manifestUrl) {
-            let imageId = manifestUrl.indexOf(iiifEndpoint) > 0 && manifestUrl.indexOf('manifest.json') > 0
-              ? manifestUrl.split('/').slice(-2,-1).pop()
+            let imageId = manifestUrl.indexOf('iiif.juncture-digital.org') > 0 && manifestUrl.indexOf('manifest.json') === manifestUrl.length - 13
+              ? manifestUrl.split('/').slice(3,-1).join('/')
               : manifestUrl
-              this.insertAtCursor(cursorPos, `.ve-image ${decodeURIComponent(imageId)}\n`)
+              this.insertAtCursor(cursorPos, `\n.ve-image ${decodeURIComponent(imageId)}\n`)
           } else {
             this.getManifestUrl(url).then((manifestUrl) => {
               let imageId = manifestUrl.split('/').slice(3,-1).join('/')
               if (cursorPos.line === 0) {
-                this.insertAtCursor(cursorPos, `.ve-header "File Title" ${imageId}\n`)
+                this.insertAtCursor(cursorPos, `.ve-header "Essay Title" ${imageId}\n\n`)
               } else {
                 this.insertAtCursor(cursorPos, `\n.ve-image ${imageId}\n`)
               }
@@ -429,17 +428,17 @@
         if (isURL(pastedText)) {
           let manifestUrl = (new URL(pastedText)).searchParams.get('manifest')
           if (manifestUrl) {
-            let imageId = manifestUrl.indexOf(iiifEndpoint) > 0 && manifestUrl.indexOf('manifest.json') > 0
-              ? manifestUrl.split('/').slice(-2,-1).pop()
+            let imageId = manifestUrl.indexOf('iiif.juncture-digital.org') > 0 && manifestUrl.indexOf('manifest.json') === manifestUrl.length - 13
+              ? manifestUrl.split('/').slice(3,-1).join('/')
               : manifestUrl
             this.easyMDE.codemirror.replaceSelection(`\n.ve-image ${decodeURIComponent(imageId)}\n`)
           } else {
             this.getManifestUrl(pastedText).then((manifestUrl) => {
-              manifestUrl = manifestUrl.indexOf(iiifEndpoint) === 0
+              manifestUrl = manifestUrl.indexOf('iiif.juncture-digital.org') > 0
                 ? decodeURIComponent(manifestUrl.split('/').slice(3,-1).join('/'))
                 : manifestUrl
               let viewer = manifestUrl.indexOf('youtube.com') > 0 ? 'video' : 'image'
-              this.easyMDE.codemirror.replaceSelection(`\n.ve-${viewer} ${manifestUrl}`)
+              this.easyMDE.codemirror.replaceSelection(`\n.ve-${viewer} ${manifestUrl}\n`)
             })
           }
         } else {
@@ -456,9 +455,10 @@
       insertAtCursor(pos, text) {
         let priorLine = this.easyMDE.codemirror.getRange({line:pos.line-2, char:0}, pos).trim().split(/\s/)
         if (priorLine.length > 0 && priorLine[0] === '.ve-image') {
+          console.log(priorLine.slice(1).join(' '), text.split(/\s/).filter(x => x))
           let merged = '.ve-image\n'
           merged += `    - ${priorLine.slice(1).join(' ')}\n`
-          merged += `    - ${text.split(/\s/).slice(1).join(' ')}\n`
+          merged += `    - ${text.split(/\s/).filter(x => x).slice(1).join(' ')}\n`
           this.easyMDE.codemirror.setSelection({line:pos.line-1,ch:0}, {line:pos.line})
           this.easyMDE.codemirror.replaceSelection(merged)
         } else {
@@ -474,10 +474,8 @@
         this.userCanUpdate = this.$refs.contentSelector.repositoryIsWriteable
           ? await this.$refs.contentSelector.repositoryIsWriteable()
           : false
-        console.log(`isLoggedIn=${isLoggedIn}`)
       },
       userCanUpdate(canUpdate) {
-        console.log(`canUpdate=${canUpdate}`)
         document.getElementById('save').style.display = this.userCanUpdate ? 'inline-block' : 'none'
       }
     }

@@ -4,100 +4,91 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
   <link href="https://visual-essays.github.io/web-app/static/images/favicon.svg" rel="icon" type="image/svg+xml"/>
   <link href="https://visual-essays.github.io/web-app/static/images/favicon.png" rel="icon" type="image/png"/>
-  <title>Juncture: Annotator</title>
+  <title>Juncture: Editor</title>
   <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet" />
-  <link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap/dist/css/bootstrap.min.css" />
-  <link type="text/css" rel="stylesheet" href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" integrity="sha512-KfkfwYDsLkIlwQp6LFnl8zNdLGxu9YAA1QvwINks4PhcElQSvqcyVLLD9aMhXd13uQjoXtEKNosOWaZqXgel0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+  <link href="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.css" type="text/css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.6/dist/annotorious.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" integrity="sha512-KfkfwYDsLkIlwQp6LFnl8zNdLGxu9YAA1QvwINks4PhcElQSvqcyVLLD9aMhXd13uQjoXtEKNosOWaZqXgel0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <style>
     [v-cloak] {display: none}
     * {box-sizing: border-box;}
-    body {max-width:1000px; margin: auto !important;}
-    main {width:100%; height: calc(100vh - 50px); padding: 50px 0;}
-    #osd { width:100%; height:100%}
-    .container {width:100%; height:100%; display:flex; gap:12px; padding:12px;}
-    .overDropzone {position:absolute; left:0; background:rgba(0,0,0,.1);}
-    .annotations ul {padding:0; list-style:none;}
-    .annotations li {clear: both; margin-bottom: 18px;}
-    .anno {display:flex; align-content:flex-start; margin-bottom: 18px; overflow:auto; font-size:0.9em;}
-    .anno img {float:left; padding:0 12px 0 0; cursor:pointer;}
-    .r6o-editor {width: 300px;}
-    /*.r6o-editor-inner div:nth-last-of-type(2) {display: none}*/
-    .a9s-toolbar .a9s-toolbar-btn{width:30px;height:30px;padding:0;}
-    .anno-header, .depicts-header {display:flex;align-content:center;gap:9px;}
-    .depicts-dialog-icon{color:red;}
-    .help-dialog::part(panel){max-height:75vh; overflow-y:scroll;}
-    .anno-copy::part(base){padding-top:0;}
+    body {}
+    #annotator { display:grid; grid-template-rows: auto 1fr; height: 100vh; }
+    .content { display: flex; }
+    .viewer { display: flex; flex-direction: column; width: 100%; }
+    #osd { height: 100%; }
+    .panel { width: 300px; }
+    .buttons { padding: 1rem; text-align: center;}
+    i.fa-copy:hover { cursor: copy; }
+    .panel {height: calc(100vh - 150px); overflow-y: scroll; }
+    .annotations ul { list-style: none; padding: 0; }
+    .annotations ul li { margin-bottom: 12px;}
+    .depicted, .annotations { margin: 12px; }
+    .depicted { border-bottom: 1px solid #ccc; padding-bottom: 12px; }
+    .depicted i { font-size: 24px; padding-left: 6px; }
+    .depicted i:hover { cursor: pointer; color: #5656F6;}
+    .anno { display: flex; gap: 6px; }
+    .anno:hover { background-color: #eee; cursor: pointer; }
+    .panel h1 { display: inline-block; margin: 12px 0; font-size: 1.4rem; }
   </style>
 </head>
 <body>
 
-  <div id="app">
-  
+  <div id="annotator">
+
     <ve-header
       v-cloak
       background="#5B152E"
       logo="https://raw.githubusercontent.com/visual-essays/media/main/images/Juncture_Logo.png"
+      label="Annotator"
+      url="/"
       contact="Ron.Snyder@ithaka.org"
-      
     >
       <ul>
         <li><a href="/">Home</a></li>
         <li><a href="/editor">Editor</a></li>
         <li><a href="/media">Media tool</a></li>
         <li><a href="/contact">Contact us</a></li>
+        <li><a href="/Help">Help</a></li>
         <li>auth</li>
       </ul>
     </ve-header>
 
-    <ve-content-path ref="contentSelector" :content-path="contentPath" mode="essays" sticky="true"></ve-content-path>
+    <div class="content">
 
-    <main v-cloak>
-      <div v-if="isLoggedIn && !manifestUrl" style="padding:12px;">Drag IIIF manifest into window</div>
-      <div v-if="isLoggedIn" class="container">
+      <div class="viewer">
+        <div id="toolbar" style="display:inline-block;"></div>
+        <div id="osd"></div>
+      </div>
+
+      <div class="panel">
+        <div class="depicted">
+          <h1>Entities depicted</h1> <i class="fa-regular fa-pen-to-square" @click="openDepicts"></i>
+          <ve-depicts :manifest="manifestUrl" :editable="true"></ve-depicts>
+        </div>
         
-        <div class="image" style="height:100%; width:100%;">
-          <div id="osd"></div>
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:18px;" v-if="manifestUrl" style="width:300px;" v-cloak>
-          <div class="depicts">
-            <div class="depicts-header">
-              <div><b>Entities</b><em> (people, places, etc) </em><b>depicted in image</b></div>
-              <b-button name="pencil" @click="openDepicts"></b-button>
-            </div>
-            <ve-depicts :manifest="manifestUrl" :editable="true"></ve-depicts>
-          </div>
-          
-          <div class="annotations">
-            <div class="anno-header">
-              <div style="margin-top:12px;display:inline-block;"><b>Image annotations</b></div>
-              <div id="toolbar" style="display:inline-block;"></div>
-            </div>
-            <ul>
-              <li v-for="anno in annotations" :key="anno.id">
-                <div class="anno" @mouseEnter="hoverAnno = anno" @mouseLeave="hoverAnno = null">
-                  <img @click="selectAnno = selectAnno ? null : anno" :src="annoThumbnail(anno)"/>
-                  <div v-html="anno.body[0].value"></div>
-                  <div>
-                    <b-button class="anno-copy" @click="copyTextToClipboard(anno.id.split('/').pop())" name="clipboard" label="Copy annotation ID"></b-button>
-                  </div>
-                </div>
-              </li>
-            </ul>
-          </div>
-
+        <div class="annotations">
+          <h1>Annotations</h1>
+          <ul>
+            <li v-for="anno in annotations" :key="anno.id">
+              <div class="anno" @mouseEnter="hoverAnno = anno" @mouseLeave="hoverAnno = null" @click="selectAnno = selectAnno ? null : anno" >
+                <img :src="annoThumbnail(anno)"/>
+                <!-- <i class="fa-regular fa-copy" @click="copyTextToClipboard(anno.id.split('/').pop())"></i> -->
+                <div v-html="anno.body[0].value"></div>
+              </div>
+            </li>
+          </ul>
         </div>
       </div>
 
-      <div v-cloak v-else class="main">
-        Please login to use the editor
-      </div>
+    </div>
 
-    </main>
-  
+    <div class="buttons">
+      <b-button variant="primary" @click="closeWindow">Close</b-button>
+    </div>
+
   </div>
   
   <!-- This is used for deep linking of Single Page Apps when hosted with GitHub Pages -->
@@ -109,6 +100,15 @@
       }
     }(window.location))
   </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/openseadragon@3.0.0/build/openseadragon/openseadragon.min.js" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.6/dist/openseadragon-annotorious.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-toolbar@0.1.1/dist/annotorious-toolbar.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+  <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
+  <script src="//unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue-icons.min.js"></script>
+
   <script>
     let addEl = (args) => {
       let el = document.createElement(args.tag)
@@ -117,40 +117,28 @@
       return el
     }
     const isDev = window.location.hostname == 'localhost'
-    const iiifServer = 'https://iiif.juncture-digital.org'
     const apiEndpoint = isDev ? 'http://localhost:8000' : 'https://api.juncture-digital.org'
     const wcEndpoint = isDev ? 'http://localhost:3333/build' : 'https://unpkg.com/visual-essays/dist/visual-essays'
+    const iiifEndpoint = isDev ? 'http://localhost:8088' : 'https://iiif.juncture-digital.org'
     const annotationsEndpoint = isDev ? 'http://localhost:8000' : 'https://api.juncture-digital.org'
-
     addEl({tag: 'link', rel: 'stylesheet', type: 'text/css', href: `${wcEndpoint}/visual-essays.css`})
     addEl({tag: 'script', type: 'module', src: `${wcEndpoint}/visual-essays.esm.js`})
-    console.log(`annotator: hostname=${window.location.hostname} isDev=${isDev} apiEndpoint=${apiEndpoint} iiifServer=${iiifServer} wcEndpoint=${wcEndpoint} annotationsEndpoint=${annotationsEndpoint}`)
+    console.log(`editor: hostname=${window.location.hostname} isDev=${isDev} apiEndpoint=${apiEndpoint} wcEndpoint=${wcEndpoint}`)
   </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://cdn.jsdelivr.net/npm/openseadragon@3.0.0/build/openseadragon/openseadragon.min.js" type="text/javascript"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-openseadragon@2.7.6/dist/openseadragon-annotorious.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@recogito/annotorious-toolbar@0.1.1/dist/annotorious-toolbar.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
-  <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
-  <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue-icons.min.js"></script>
   <script type="module">
-
+    
     new Vue({
-    el: '#app',
+    el: '#annotator',
     data: () => ({
+      contentPath: null,
       manifestUrl: '',
       manifest: null,
-      contentPath: '',
-      imageHash: null,
       pathRoot: '/',
-      ghAuthToken: null,
-      acct: null,
-      repo: null,
-      userCanUpdate: false,
+      imageHash: null,
       annotations: [],
       hoverAnno: null,
-      selectAnno: null
-
+      selectAnno: null,
+      ghAuthToken: null
     }),
     computed: {
       isLoggedIn() { return this.ghAuthToken !== null },
@@ -158,36 +146,26 @@
     },
     created() {
       this.ghAuthToken = localStorage.getItem('gh-auth-token')
-      window.addEventListener('storage', (evt) => { this.ghAuthToken = localStorage.getItem('gh-auth-token') })
       let pathElems = window.location.pathname.split('/').filter(pe => pe)
-      if (pathElems.length > 0 && pathElems[0] === 'annotator') {
+      if (pathElems.length > 0 && pathElems[0] === 'test') {
         this.pathRoot = `/${pathElems[0]}/`
         pathElems = pathElems.slice(1)
       }
+      console.log(pathElems)
       let qargs = new URL(location.href).searchParams
       this.manifestUrl = qargs.get('manifest')
       this.contentPath = qargs.has('anno-base') ? qargs.get('anno-base') : pathElems.join('/')
-      console.log(`annotator.created: manifest=${this.manifestUrl} contentPath=${this.contentPath}`)
     },
     mounted() {
-      this.$refs.contentSelector.addEventListener('contentPathChanged', async (evt) => this.parseContentPath(evt.detail))
+      console.log('mounted')
     },
     methods: {
 
-      async parseContentPath(path) {
-        let [source, contentSpec] = path.split(':')
-        let [contentPath, argsStr] = contentSpec.split('?');
-        [this.acct, this.repo] = contentPath.split('/')
-        let filePath = contentPath.split('/').slice(2).join('/')
-        this.userCanUpdate = await this.$refs.contentSelector.repositoryIsWriteable()
-        console.log(`annotator: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
-        this.contentPath = contentPath
-        window.history.replaceState({}, null, `${this.pathRoot}${contentSpec}/?manifest=${this.manifestUrl}`)
-      },
-
       initOSD() {
+        console.log('initOSD', document.getElementById('osd'))
         this.viewer = OpenSeadragon({
           id: 'osd',
+          homeFillsViewer: true,
           prefixUrl: 'https://openseadragon.github.io/openseadragon/images/',
           minZoomImageRatio: 0.2,
           maxZoomPixelRatio: 5
@@ -208,10 +186,6 @@
               : Promise.resolve(manifest)
           )
           .then(manifest => this.manifest = manifest)
-      },
-
-      openDepicts() {
-        document.querySelector('ve-depicts').edit()
       },
 
       findItem(toMatch, current, seq) {
@@ -235,6 +209,19 @@
 
       hashStr(s) { return sha256(s) },
 
+      copyTextToClipboard(text) {
+        if (navigator.clipboard) navigator.clipboard.writeText(text)
+      },
+
+      openDepicts() {
+        document.querySelector('ve-depicts').edit()
+      },
+
+      closeWindow() {
+        console.log('closeWindow')
+        window.close()
+      },
+
       async loadAnnotations() {
         let annotations = []
         let url = `${annotationsEndpoint}/annotations/${this.annoPath}/`
@@ -256,6 +243,7 @@
       async createAnnotation(anno) {
         anno.id = this.hashStr(anno.id).slice(0,8)
         anno.target.id = this.imageHash
+        console.log('createAnnotation', anno)
         let resp = await fetch(`${annotationsEndpoint}/annotation/`, {
           method: 'POST',
           headers: {
@@ -309,7 +297,7 @@
         let serviceHost = (this.imageInfo.service[0].id || this.imageInfo.service[0]['@id']).replace(/\/info\.json$/,'')
         let coords = anno.target.selector.value.split(':').pop().split(',').map(n => Math.round(n))
         return `${serviceHost}/${coords.join(',')}/80,/0/default.jpg`
-      },
+      }
 
     },
     watch: {
@@ -318,6 +306,11 @@
       },
       isLoggedIn() {
         if (this.manifestUrl && this.isLoggedIn) this.getManifest()
+      },
+      annoPath() {
+        if (this.annoPath) {
+          this.loadAnnotations()
+        }
       },
       manifest(manifest) {
         this.imageInfo = this.findItem({type:'Annotation', motivation:'painting'}, manifest).body
@@ -329,12 +322,8 @@
               : { url: this.imageInfo.id, type: 'image', buildPyramid: true }
             this.viewer.open(tileSource)
             this.imageHash = this.hashStr(this.imageInfo.id).slice(0,8)
+            console.log(`annotator: contentPath=${this.contentPath} anno-path=${this.annoPath} manifest=${this.manifestUrl}`)
           })
-        }
-      },
-      annoPath() {
-        if (this.annoPath) {
-          this.loadAnnotations()
         }
       },
       hoverAnno(anno, prior) {
@@ -342,6 +331,7 @@
         if (anno) document.querySelector(`[data-id="${anno.id}"]`).classList.add('hover')
       },
       selectAnno(anno) {
+         console.log(`selectAnno`, anno)
         this.annotator.selectAnnotation(anno)
       }
     }

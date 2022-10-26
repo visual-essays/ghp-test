@@ -63,7 +63,7 @@
       <textarea v-cloak ref="content"></textarea>
     </div>
 
-    <b-modal id="save-modal" title="Save File">
+    <b-modal v-cloak id="save-modal" title="Save File">
       <p class="my-4">Save File before changing?</p>
       <template #modal-footer="{ ok }">
         <b-button size="sm" @click="changeContent">No</b-button>

@@ -108,6 +108,7 @@
   </script>
   <script type="module">
     
+    const videoExtensions = new Set(['mp4', 'ogg', 'webm'])
     new Vue({
     el: '#editor',
     data: () => ({
@@ -401,27 +402,45 @@
         if (inputText && isURL(inputText)) {
           let url = inputText
           let parsed = new URL(url)
-          let manifestUrl = parsed.searchParams.get('manifest')
-          if (manifestUrl) {
-            let imageId = manifestUrl.indexOf('iiif.juncture-digital.org') > 0 && manifestUrl.indexOf('manifest.json') === manifestUrl.length - 13
-              ? manifestUrl.split('/').slice(3,-1).join('/')
-              : manifestUrl
-              if (cursorPos.line === 0) {
-                this.insertAtCursor(cursorPos, `.ve-header "Essay Title" ${imageId}\n\n`)
-              } else {
-                this.insertAtCursor(cursorPos, `\n.ve-image ${imageId}\n`)
-              }
+          let fileExtension = parsed.pathname.split('/').pop().split('.').pop().toLowerCase()
+          if (parsed.hostname === 'www.youtube.com') {
+            this.addVideo(cursorPos, url.split('&')[0])
+          } else if (videoExtensions.has(fileExtension)) {
+            this.addVideo(cursorPos, url)
           } else {
-            this.getManifestUrl(url).then((manifestUrl) => {
-              let imageId = manifestUrl.split('/').slice(3,-1).join('/')
-              if (cursorPos.line === 0) {
-                this.insertAtCursor(cursorPos, `.ve-header "Essay Title" ${imageId}\n\n`)
-              } else {
-                this.insertAtCursor(cursorPos, `\n.ve-image ${imageId}\n`)
-              }
-            })
+            let manifestUrl = parsed.searchParams.get('manifest')
+            if (manifestUrl) this.addImage(cursorPos, manifestUrl)
+            else this.getManifestUrl(url).then((manifestUrl) => this.addImage(cursorPos, manifestUrl))
           }
         }
+      },
+
+      addImage(pos, manifestUrl) {
+        let imageId = manifestUrl.indexOf('iiif.juncture-digital.org') > 0 && manifestUrl.indexOf('manifest.json') === manifestUrl.length - 13
+          ? manifestUrl.split('/').slice(3,-1).join('/')
+          : manifestUrl
+        let text = pos.line === 0
+          ? `.ve-header "Essay Title" ${imageId}\n\n`
+          : `\n.ve-image ${imageId}\n`
+        let imagesList = this.getImageList(pos)
+        if (imagesList.length > 0) {
+          let merged = imagesList.length === 1
+            ? `.ve-image\n    - ${imagesList[0].slice(10)}\n`
+            : imagesList.join('\n') + '\n'
+          merged += `    - ${text.split(/\s/).filter(x => x).slice(1).join(' ')}\n`
+          this.easyMDE.codemirror.setSelection({line:pos.line-imagesList.length+1,ch:0}, {line:pos.line})
+          this.easyMDE.codemirror.replaceSelection(merged)
+        } else {
+          pos.ch = 0
+          this.easyMDE.codemirror.setSelection(pos, pos)
+          this.easyMDE.codemirror.replaceSelection(text)
+        }
+      },
+
+      addVideo(pos, url) {
+        pos.ch = 0
+        this.easyMDE.codemirror.setSelection(pos, pos)
+        this.easyMDE.codemirror.replaceSelection(`\n.ve-video ${url} right\n`)
       },
 
       /*
@@ -475,13 +494,9 @@
       insertAtCursor(pos, text) {
         let imagesList = this.getImageList(pos)
         if (imagesList.length > 0) {
-          let merged
-          if (imagesList.length === 1) {
-            merged = '.ve-image\n'
-            merged += `    - ${imagesList[0].slice(10)}\n`
-          } else {
-            merged = imagesList.join('\n') + '\n'
-          }
+          let merged = imagesList.length === 1
+            ? `.ve-image\n    - ${imagesList[0].slice(10)}\n`
+            : imagesList.join('\n') + '\n'
           merged += `    - ${text.split(/\s/).filter(x => x).slice(1).join(' ')}\n`
           this.easyMDE.codemirror.setSelection({line:pos.line-imagesList.length+1,ch:0}, {line:pos.line})
           this.easyMDE.codemirror.replaceSelection(merged)

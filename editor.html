@@ -127,7 +127,7 @@
     computed: {
       isLoggedIn() { return this.ghAuthToken !== null },
       webHost() { return isDev ? 'http://localhost:8080' : 'https://beta.juncture-digital.org' },
-      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays\//,'').replace(/\/README\.md/,'')}` : null }
+      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays\//,'').replace(/\/README\.md/,'').replace(/\.md$/,'')}` : null }
     },
     created() {
       this.ghAuthToken = localStorage.getItem('gh-auth-token')
@@ -397,7 +397,6 @@
       drop(e) {
         let cursorPos = this.easyMDE.codemirror.coordsChar({left:e.pageX, top:e.pageY})
         let inputText = ''
-        console.log('drop', inputText)
         if (e.dataTransfer) inputText = decodeURI(e.dataTransfer.getData('Text') || e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list'))
         if (inputText && isURL(inputText)) {
           let url = inputText
@@ -407,7 +406,11 @@
             let imageId = manifestUrl.indexOf('iiif.juncture-digital.org') > 0 && manifestUrl.indexOf('manifest.json') === manifestUrl.length - 13
               ? manifestUrl.split('/').slice(3,-1).join('/')
               : manifestUrl
-              this.insertAtCursor(cursorPos, `\n.ve-image ${decodeURIComponent(imageId)}\n`)
+              if (cursorPos.line === 0) {
+                this.insertAtCursor(cursorPos, `.ve-header "Essay Title" ${imageId}\n\n`)
+              } else {
+                this.insertAtCursor(cursorPos, `\n.ve-image ${imageId}\n`)
+              }
           } else {
             this.getManifestUrl(url).then((manifestUrl) => {
               let imageId = manifestUrl.split('/').slice(3,-1).join('/')
@@ -421,6 +424,7 @@
         }
       },
 
+      /*
       paste(e) {
         let pastedText = e.clipboardData?.getData('Text') || ''
         console.log(`paste: text=${pastedText} isURL=${isURL(pastedText)}`)
@@ -444,6 +448,12 @@
           this.easyMDE.codemirror.replaceSelection(pastedText)
         }
       },
+      */
+
+      paste(e) {
+        let pastedText = e.clipboardData?.getData('Text') || ''
+        this.easyMDE.codemirror.replaceSelection(pastedText)
+      },
 
       async getManifestUrl(imageUrl) {
         imageUrl = imageUrl.split('#')[0]
@@ -451,14 +461,29 @@
         return await resp.text()
       },
   
+      getImageList(pos) {
+        let lines = []
+        let line = pos.line
+        lines.push(this.easyMDE.codemirror.getLine(line))
+        while (line > 0 && lines[lines.length-1].trim() !== '' && lines[lines.length-1].indexOf('.ve-image') === -1) {
+          line = --line
+          lines.push(this.easyMDE.codemirror.getLine(line))
+        }
+        return lines[lines.length-1].indexOf('.ve-image') === 0 ? lines.reverse() : []
+      },
+
       insertAtCursor(pos, text) {
-        let priorLine = this.easyMDE.codemirror.getRange({line:pos.line-2, char:0}, pos).trim().split(/\s/)
-        if (priorLine.length > 0 && priorLine[0] === '.ve-image') {
-          console.log(priorLine.slice(1).join(' '), text.split(/\s/).filter(x => x))
-          let merged = '.ve-image\n'
-          merged += `    - ${priorLine.slice(1).join(' ')}\n`
+        let imagesList = this.getImageList(pos)
+        if (imagesList.length > 0) {
+          let merged
+          if (imagesList.length === 1) {
+            merged = '.ve-image\n'
+            merged += `    - ${imagesList[0].slice(10)}\n`
+          } else {
+            merged = imagesList.join('\n') + '\n'
+          }
           merged += `    - ${text.split(/\s/).filter(x => x).slice(1).join(' ')}\n`
-          this.easyMDE.codemirror.setSelection({line:pos.line-1,ch:0}, {line:pos.line})
+          this.easyMDE.codemirror.setSelection({line:pos.line-imagesList.length+1,ch:0}, {line:pos.line})
           this.easyMDE.codemirror.replaceSelection(merged)
         } else {
           pos.ch = 0

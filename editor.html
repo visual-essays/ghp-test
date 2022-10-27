@@ -41,6 +41,7 @@
 
     <ve-header
       v-cloak
+      labe="Editor"
       background="#5B152E"
       logo="https://raw.githubusercontent.com/visual-essays/media/main/images/Juncture_Logo.png"
       url="/"
@@ -50,7 +51,7 @@
         <li><a href="/">Home</a></li>
         <li><a href="/media" target="_blank">Media tool</a></li>
         <li><a href="/contact">Contact us</a></li>
-        <li><a href="/Help">Help</a></li>
+        <li><a href="/help">Help</a></li>
         <li>auth</li>
       </ul>
     </ve-header>
@@ -71,9 +72,9 @@
       </template>
     </b-modal>
 
-    <b-toast id="essay-saved" title="" solid :auto-hide-delay="saveStatus.status === 200 ? 1000 : 10000" no-close-button><b>Essay save to Github: {{`${saveStatus.status === 200 ? 'success' : 'failed (' + saveStatus.status + ')'} ${saveStatus.statusText}`}}</b></b-toast>
-    <b-toast id="link-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Link copied to clipboard:</b>&nbsp;{{link}}</b-toast>
-    <b-toast id="text-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Essay text copied to clipboard</b></b-toast>
+    <b-toast v-cloak id="essay-saved" title="" solid :auto-hide-delay="saveStatus.status === 200 ? 1000 : 10000" no-close-button><b>Essay save to Github: {{`${saveStatus.status === 200 ? 'success' : 'failed (' + saveStatus.status + ')'} ${saveStatus.statusText}`}}</b></b-toast>
+    <b-toast v-cloak id="link-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Link copied to clipboard:</b>&nbsp;{{link}}</b-toast>
+    <b-toast v-cloak id="text-copied" title="" solid auto-hide-delay="1000" no-close-button><b>Essay text copied to clipboard</b></b-toast>
   
   </div>
   
@@ -249,7 +250,7 @@
             uniqueId: 'juncture_content'
           },
           hideIcons: ['side-by-side', 'fullscreen', 'guide'],
-          spellChecker: false,
+          spellChecker: true,
           indentWithTabs: false,
           unorderedListStyle: '-',
           overlayMode: {
@@ -310,7 +311,8 @@
         let url = isDev 
           ? `http://${window.location.hostname}:8080/docs`
           : 'https://beta.juncture-digital.org/docs'
-        let options = 'toolbar=yes,location=yes,left=0,top=0,width=1040,height=1200,scrollbars=yes,status=yes'
+        let options = 'toolbar=no,location=no,left=0,top=0,width=1000,height=1200,scrollbars=no,status=no'
+        console.log(`showHelp=${url}`)
         this.helpWindow = window.open(url, '_blank', options)
       },
 

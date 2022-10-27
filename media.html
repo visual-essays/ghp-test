@@ -37,7 +37,7 @@
       sticky="true"
     ></ve-content-path>
 
-    <ve-add-media-resource-dialog ref="addMedia" :show="false" :contentPath="contentPath"></ve-add-media-resource-dialog>
+    <ve-add-media-resource-dialog v-if="contentPath" ref="addMedia" :show="false" :content-path="contentPath"></ve-add-media-resource-dialog>
 
     <ve-image-grid as-cards>
       <ul>
@@ -110,6 +110,7 @@
         pathElems = pathElems.slice(1)
       } 
       this.contentPath = pathElems.join('/')
+      console.log(`media.contentPath=${this.contentPath}`)
     },
     methods: {
 
@@ -122,6 +123,7 @@
         this.userCanUpdate = await this.$refs.contentSelector.repositoryIsWriteable()
         console.log(`acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
         this.contentPath = contentPath
+        console.log(`media.contentPath=${this.contentPath}`)
         window.history.replaceState({}, null, `${this.pathRoot}${contentSpec}`)
         this.dirList = (await this.$refs.contentSelector.getDirList()).map(item => {item.root = root; return item})
       },

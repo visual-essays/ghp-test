@@ -21,7 +21,7 @@
     .preview .EasyMDEContainer .CodeMirror {height:calc(100% - 60px);}
     .editor-preview {padding:0; background-color:white;}
     .preview .editor-statusbar {display:none;}
-    .cm-ve-tag {color:red;}
+    .cm-ve-tag, .cm-mark {color:red;}
     #mde .fa {font-size:1.2rem}
     .cm-s-easymde .cm-header-1{font-size: calc(1rem + 1vw);}
     .cm-s-easymde .cm-header-2{font-size: calc(1rem + .8vw);}
@@ -103,12 +103,14 @@
     const apiEndpoint = isDev ? 'http://localhost:8000' : 'https://api.juncture-digital.org'
     const wcEndpoint = isDev ? 'http://localhost:3333/build' : 'https://unpkg.com/visual-essays/dist/visual-essays'
     const iiifEndpoint = isDev ? 'http://localhost:8088' : 'https://iiif.juncture-digital.org'
-    addEl({tag: 'link', rel: 'stylesheet', type: 'text/css', href: `${wcEndpoint}/visual-essays.css`})
-    addEl({tag: 'script', type: 'module', src: `${wcEndpoint}/visual-essays.esm.js`})
-    console.log(`editor: hostname=${window.location.hostname} isDev=${isDev} apiEndpoint=${apiEndpoint} wcEndpoint=${wcEndpoint}`)
+    // console.log(`editor: hostname=${window.location.hostname} isDev=${isDev} apiEndpoint=${apiEndpoint} wcEndpoint=${wcEndpoint}`)
   </script>
   <script type="module">
-    
+
+    addEl({tag: 'link', rel: 'stylesheet', type: 'text/css', href: `${wcEndpoint}/visual-essays.css`})
+    let el = addEl({tag: 'script', type: 'module', src: `${wcEndpoint}/visual-essays.esm.js`})
+    el.addEventListener('load', () => {
+
     const videoExtensions = new Set(['mp4', 'ogg', 'webm'])
     new Vue({
     el: '#editor',
@@ -162,13 +164,13 @@
 
         let priorContentPath = localStorage.getItem('smde_juncture_path')
         
-        console.log(`parseContentPath: newContentPath=${newContentPath} priorContentPath=${priorContentPath}`)
+        // console.log(`parseContentPath: newContentPath=${newContentPath} priorContentPath=${priorContentPath}`)
 
         if (newContentPath !== priorContentPath && priorContentPath && this.isMarkdownFile(priorContentPath)) {
           let currentContent = this.easyMDE.value().trim()
           let currentHash = currentContent.hashCode()
           let lastRemoteHash = localStorage.getItem('last-remote-save-hash')
-          console.log(`parseContentPath: currentHash=${currentHash} lastRemoteHash=${lastRemoteHash}`)
+          // console.log(`parseContentPath: currentHash=${currentHash} lastRemoteHash=${lastRemoteHash}`)
           if (currentHash != lastRemoteHash) {
             localStorage.setItem('remote-staging-content', currentContent)
             localStorage.setItem('remote-staging-path', this.contentPath)
@@ -189,21 +191,21 @@
         [this.acct, this.repo] = contentPath.split('/')
         let filePath = contentPath.split('/').slice(2).join('/')
         this.userCanUpdate = await this.$refs.contentSelector.repositoryIsWriteable()
-        console.log(`editor.parseContentPath: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
+        // console.log(`editor.parseContentPath: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
 
         if (this.isMarkdownFile(filePath)) {
           let markdown
           if (newContentPath === localStorage.getItem('smde_juncture_path')) {
             markdown = localStorage.getItem('smde_juncture_content')
-            console.log('use locally saved content')
+            // console.log('use locally saved content')
           } else if (newContentPath === localStorage.getItem('last-remote-save-path')) {
             markdown = localStorage.getItem('last-remote-save-content')
             localStorage.setItem('last-remote-save-hash', markdown.trim().hashCode())
-            console.log('use last remote save content')
+            // console.log('use last remote save content')
           }
           if (!markdown) {
             markdown = (await this.$refs.contentSelector.getFile(filePath)).content
-            console.log('use remote content')
+            // console.log('use remote content')
             localStorage.setItem('last-remote-save-hash', markdown.trim().hashCode())
           }
           this.easyMDE.value(markdown)
@@ -235,6 +237,8 @@
                   }
                   return 've-tag'
                 */
+              } else if (stream.match(/==[^=]+=={[0-9,a-f]+}/)) {
+                return 'mark'
               } else {
                 stream.next()
                 return null
@@ -257,7 +261,16 @@
             mode: CodeMirror.getMode({}, 've-tag'),
             combine: false,
           },
-          toolbar: ['undo', 'redo', '|', 'bold', 'italic', 'heading', 'quote', 'unordered-list', 'ordered-list', 'link', '|', 'preview',
+          toolbar: ['undo', 'redo', '|', 'bold', 'italic', 'heading', 'quote', 'unordered-list', 'ordered-list',
+           // 'link', 
+            {
+              class: 'mark',
+              action: () => {this.markText()},
+              className: 'fa fa-link',
+              title: 'Mark Textlp',
+              attributes: {id: 'mark'}
+            },           
+            '|', 'preview',
             {
               class: 'help',
               action: () => {this.showHelp()},
@@ -297,6 +310,17 @@
         */
       },
 
+      async markText(editor) {
+
+        let cm = this.easyMDE.codemirror
+        let output = ''
+        let selectedText = cm.getSelection()
+        let markedText = selectedText || 'placeholder'
+        let actionText = await navigator.clipboard.readText()
+        output = '==' + markedText + `=={${actionText}}`
+        cm.replaceSelection(output)
+      },
+
       copyText() {
         navigator.clipboard.writeText(this.easyMDE.value())
       },
@@ -312,12 +336,10 @@
           ? `http://${window.location.hostname}:8080/docs`
           : 'https://beta.juncture-digital.org/docs'
         let options = 'toolbar=no,location=no,left=0,top=0,width=1000,height=1200,scrollbars=no,status=no'
-        console.log(`showHelp=${url}`)
         this.helpWindow = window.open(url, '_blank', options)
       },
 
       async saveAfterConfirm() {
-        console.log('saveAfterConfirm')
         let path = localStorage.getItem('remote-staging-path')
         let markdown = localStorage.getItem('remote-staging-content')
         this.saveStatus = await this.$refs.contentSelector.putFile(path, markdown)
@@ -343,7 +365,6 @@
       },
 
       togglePreview(markdown, preview) {
-        console.log(`previewRender: isPreviewActive=${this.isPreviewActive} ${this.easyMDE.isPreviewActive()}`)
         if (this.isPreviewActive) {
           this.isPreviewActive = false
           this.loadedDependencies.forEach(el => el.parentElement.removeChild(el))
@@ -523,6 +544,7 @@
   })
   Vue.config.productionTip = false
   Vue.config.devtools = true
+  })
 
   String.prototype.hashCode = function() {
     var hash = 0, i, chr

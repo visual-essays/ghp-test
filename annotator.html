@@ -123,6 +123,7 @@
     data: () => ({
       contentPath: null,
       manifestUrl: '',
+      seq: 1,
       manifest: null,
       pathRoot: '/',
       imageHash: null,
@@ -142,10 +143,12 @@
         this.pathRoot = `/${pathElems[0]}/`
         pathElems = pathElems.slice(1)
       }
-      console.log(pathElems)
       let qargs = new URL(location.href).searchParams
       this.manifestUrl = qargs.get('manifest')
-      this.contentPath = qargs.has('anno-base') ? qargs.get('anno-base') : pathElems.join('/')
+      this.seq = parseInt(qargs.get('seq', '1'))
+      let annoBase = qargs.get('anno-base')
+      this.contentPath = annoBase ? annoBase : pathElems.join('/')
+      console.log(`manifestUrl=${this.manifestUrl} conentPath=${this.contentPath} seq=${this.seq}`)
     },
     mounted() {
       console.log('mounted')
@@ -304,7 +307,7 @@
         }
       },
       manifest(manifest) {
-        this.imageInfo = this.findItem({type:'Annotation', motivation:'painting'}, manifest).body
+        this.imageInfo = this.findItem({type:'Annotation', motivation:'painting'}, manifest, this.seq).body
         if (this.isLoggedIn) {
           if (!this.viewer) this.initOSD()
           this.$nextTick(() => {
@@ -312,8 +315,8 @@
               ? `${(this.imageInfo.service[0].id || this.imageInfo.service[0]['@id']).replace(/\/info\.json$/,'')}/info.json`
               : { url: this.imageInfo.id, type: 'image', buildPyramid: true }
             this.viewer.open(tileSource)
-            this.imageHash = this.hashStr(this.imageInfo.id).slice(0,8)
-            console.log(`annotator: contentPath=${this.contentPath} anno-path=${this.annoPath} manifest=${this.manifestUrl}`)
+            this.imageHash = this.hashStr(`${this.imageInfo.id}`).slice(0,8)
+            console.log(`annotator: contentPath=${this.contentPath} anno-path=${this.annoPath} manifest=${this.manifestUrl} seq=${this.seq}`)
           })
         }
       },

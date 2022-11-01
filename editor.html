@@ -429,6 +429,7 @@
           if (parsed.hostname === 'www.youtube.com') {
             this.addVideo(cursorPos, url.split('&')[0])
           } else if (videoExtensions.has(fileExtension)) {
+            url = url.replace(/\/github\.com\//, '/raw.githubusercontent.com/').replace(/\/blob\//,'/')
             this.addVideo(cursorPos, url)
           } else {
             let manifestUrl = parsed.searchParams.get('manifest')

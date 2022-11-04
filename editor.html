@@ -17,9 +17,9 @@
     #editor {display:grid; grid-template-rows: auto auto 1fr; height: 100vh;}
     #mde {font-family:Roboto,sans-serif; height:100%; overflow-y: hidden;}
     .EasyMDEContainer {height:calc(100%);}
-    .EasyMDEContainer .CodeMirror {height:calc(100% - 75px); font-size:1.2rem; line-height:1.4; color:#444;}
-    .preview .EasyMDEContainer .CodeMirror {height:calc(100% - 60px);}
-    .editor-preview {padding:0; background-color:white;}
+    .EasyMDEContainer .CodeMirror {height:calc(100% - 75px); font-size:1.2rem; line-height:1.4; color:#444}
+    .preview .EasyMDEContainer .CodeMirror {height:calc(100% - 60px); border:none;}
+    .editor-preview {padding:0; background-color:white; border:none;}
     .preview .editor-statusbar {display:none;}
     .cm-ve-tag, .cm-mark {color:red;}
     #mde .fa {font-size:1.2rem}
@@ -56,16 +56,16 @@
       </ul>
     </ve-header>
 
-    <ve-content-path ref="contentSelector" :content-path="contentPath" mode="essays" sticky="true"></ve-content-path>
+    <ve-content-selector ref="contentSelector" :content-path="contentPath" mode="essays" sticky="true"></ve-content-selector>
 
-    <div id="mde" 
+    <div id="mde" ref="mde"
       @paste.prevent="paste" 
       @drop.prevent="drop" @dragover.prevent @dragover="overDropzone=true" @dragleave="overDropzone=false">
       <textarea v-cloak ref="content"></textarea>
     </div>
 
     <b-modal v-cloak id="save-modal" title="Save File">
-      <p class="my-4">Save File before changing?</p>
+      <p class="my-4">Save File <b>{{contentPath.split('/').slice(2).join('/')}}</b> before changing?</p>
       <template #modal-footer="{ ok }">
         <b-button size="sm" @click="changeContent">No</b-button>
         <b-button size="sm" variant="primary" @click="saveAfterConfirm">Yes</b-button>
@@ -366,11 +366,13 @@
 
       togglePreview(markdown, preview) {
         if (this.isPreviewActive) {
+          document.getElementById('mde').classList.remove('preview')
           this.isPreviewActive = false
           this.loadedDependencies.forEach(el => el.parentElement.removeChild(el))
           this.loadedDependencies = []
         } else {
           this.isPreviewActive = true
+          document.getElementById('mde').classList.add('preview')
           let body = {'prefix': `${this.acct}/${this.repo}`, 'markdown': markdown}
           fetch(`${apiEndpoint}/html/?inline=true`, {method: 'POST', body: JSON.stringify(body)})
             .then(resp => resp.text())

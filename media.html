@@ -31,11 +31,11 @@
       </ul>
     </ve-header>
 
-    <ve-content-path ref="contentSelector" 
+    <ve-content-selector ref="contentSelector" 
       :content-path="contentPath"
       mode="media"
       sticky="true"
-    ></ve-content-path>
+    ></ve-content-selector>
 
     <ve-add-media-resource-dialog v-if="contentPath" ref="addMedia" :show="false" :content-path="contentPath"></ve-add-media-resource-dialog>
 

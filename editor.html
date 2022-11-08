@@ -92,6 +92,7 @@
   <script src="https://unpkg.com/bootstrap-vue@latest/dist/bootstrap-vue.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
   <script src="https://codemirror.net/5/lib/codemirror.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/md5-js@0.0.3/md5.min.js"></script>
   <script>
     let addEl = (args) => {
       let el = document.createElement(args.tag)
@@ -111,7 +112,7 @@
     let el = addEl({tag: 'script', type: 'module', src: `${wcEndpoint}/visual-essays.esm.js`})
     el.addEventListener('load', () => {
 
-    const videoExtensions = new Set(['mp4', 'ogg', 'webm'])
+    const videoExtensions = new Set(['mp4', 'ogg', 'ogv', 'webm'])
     new Vue({
     el: '#editor',
     data: () => ({
@@ -237,7 +238,7 @@
                   }
                   return 've-tag'
                 */
-              } else if (stream.match(/==[^=]+=={[0-9,a-f]+}/)) {
+              } else if (stream.match(/==[^=]+=={[0-9,a-f:]+}/)) {
                 return 'mark'
               } else {
                 stream.next()
@@ -430,8 +431,12 @@
           let fileExtension = parsed.pathname.split('/').pop().split('.').pop().toLowerCase()
           if (parsed.hostname === 'www.youtube.com') {
             this.addVideo(cursorPos, url.split('&')[0])
-          } else if (videoExtensions.has(fileExtension)) {
-            url = url.replace(/\/github\.com\//, '/raw.githubusercontent.com/').replace(/\/blob\//,'/')
+          } else if (videoExtensions.has(fileExtension)) { 
+            let parsedURL = new URL(url.replace(/\/github\.com\//, '/raw.githubusercontent.com/').replace(/\/blob\//,'/'))
+            if (parsedURL.hostname === 'commons.wikimedia.org') {
+              url = this.mwUploadUrl(parsedURL)
+              console.log(url)
+            }
             this.addVideo(cursorPos, url)
           } else {
             let manifestUrl = parsed.searchParams.get('manifest')
@@ -439,6 +444,12 @@
             else this.getManifestUrl(url).then((manifestUrl) => this.addImage(cursorPos, manifestUrl))
           }
         }
+      },
+
+      mwUploadUrl(url) {
+        let mwFile = decodeURIComponent(url.pathname.split('/File:').pop()).replace(/ /g,'_')
+        const _md5 = md5(mwFile)
+        return `https://upload.wikimedia.org/wikipedia/commons/${_md5[0]}/${_md5.slice(0,2)}/${mwFile}`
       },
 
       addImage(pos, manifestUrl) {
@@ -464,9 +475,9 @@
       },
 
       addVideo(pos, url) {
-        pos.ch = 0
+        // pos.ch = 0
         this.easyMDE.codemirror.setSelection(pos, pos)
-        this.easyMDE.codemirror.replaceSelection(`\n.ve-video ${url} right\n`)
+        this.easyMDE.codemirror.replaceSelection(`\n.ve-video ${url}\n`)
       },
 
       /*
@@ -497,7 +508,13 @@
 
       paste(e) {
         let pastedText = e.clipboardData?.getData('Text') || ''
+        console.log(this.isGeoCoords(pastedText))
+        if (this.isGeoCoords(pastedText)) pastedText = `.ve-map ${pastedText.replace(/\s/,'')}\n`
         this.easyMDE.codemirror.replaceSelection(pastedText)
+      },
+
+      isGeoCoords(s) {
+        return /^[0-9\-\.]+, ?[0-9\-\.]+$/.test(s)
       },
 
       async getManifestUrl(imageUrl) {

@@ -175,7 +175,7 @@
         fetch(this.manifestUrl.replace(/\?/,'%3F')).then(resp => resp.json())
           .then(manifest =>
             !Array.isArray(manifest['@context']) && parseFloat(manifest['@context'].split('/').slice(-2,-1).pop()) < 3
-              ? fetch('https://api.visual-essays.net/prezi2to3/', {
+              ? fetch('https://iiif.visual-essays.net/prezi2to3/', {
                 method: 'POST', body: JSON.stringify(manifest)}).then(resp => resp.json())
               : Promise.resolve(manifest)
           )

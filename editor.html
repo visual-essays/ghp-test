@@ -258,6 +258,7 @@
           spellChecker: false,
           indentWithTabs: false,
           unorderedListStyle: '-',
+          tabSize: 4,
           overlayMode: {
             mode: CodeMirror.getMode({}, 've-tag'),
             combine: false,
@@ -372,6 +373,7 @@
           this.loadedDependencies.forEach(el => el.parentElement.removeChild(el))
           this.loadedDependencies = []
         } else {
+          window.previewInit()  // Forces some reinitialization when previewing
           this.isPreviewActive = true
           document.getElementById('mde').classList.add('preview')
           let body = {'prefix': `${this.acct}/${this.repo}`, 'markdown': markdown}
@@ -425,25 +427,35 @@
         let cursorPos = this.easyMDE.codemirror.coordsChar({left:e.pageX, top:e.pageY})
         let inputText = ''
         if (e.dataTransfer) inputText = decodeURI(e.dataTransfer.getData('Text') || e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list'))
+        console.log(`drop: ${inputText}`)
         if (inputText && isURL(inputText)) {
           let url = inputText
           let parsed = new URL(url)
           let fileExtension = parsed.pathname.split('/').pop().split('.').pop().toLowerCase()
-          if (parsed.hostname === 'www.youtube.com') {
-            this.addVideo(cursorPos, url.split('&')[0])
+          if (parsed.hostname.indexOf('viewer.allmaps.org') >= 0) {
+            let args = Object.fromEntries(parsed.hash.slice(2).split('&').map(arg => arg.split('=')))
+            let allmapsId = args.map
+            this.addMap(`allmaps=${allmapsId}`, cursorPos)
+          } else if (parsed.hostname === 'www.youtube.com') {
+            this.addVideo(url.split('&')[0], cursorPos)
           } else if (videoExtensions.has(fileExtension)) { 
             let parsedURL = new URL(url.replace(/\/github\.com\//, '/raw.githubusercontent.com/').replace(/\/blob\//,'/'))
             if (parsedURL.hostname === 'commons.wikimedia.org') {
               url = this.mwUploadUrl(parsedURL)
-              console.log(url)
             }
-            this.addVideo(cursorPos, url)
+            this.addVideo(url, cursorPos)
           } else {
             let manifestUrl = parsed.searchParams.get('manifest')
-            if (manifestUrl) this.addImage(cursorPos, manifestUrl)
-            else this.getManifestUrl(url).then((manifestUrl) => this.addImage(cursorPos, manifestUrl))
+            if (manifestUrl) this.addImage(manifestUrl, cursorPos)
+            else this.getManifestUrl(url).then((manifestUrl) => this.addImage(manifestUrl, cursorPos))
           }
         }
+      },
+
+      paste(e) {
+        let pastedText = e.clipboardData?.getData('Text') || ''
+        if (this.isGeoCoords(pastedText)) this.addMap(pastedText.replace(/\s/,''))
+        else this.easyMDE.codemirror.replaceSelection(pastedText)
       },
 
       mwUploadUrl(url) {
@@ -452,14 +464,14 @@
         return `https://upload.wikimedia.org/wikipedia/commons/${_md5[0]}/${_md5.slice(0,2)}/${mwFile}`
       },
 
-      addImage(pos, manifestUrl) {
+      addImage(manifestUrl, pos) {
         let imageId = manifestUrl.indexOf('iiif.juncture-digital.org') > 0 && manifestUrl.indexOf('manifest.json') === manifestUrl.length - 13
           ? manifestUrl.split('/').slice(3,-1).join('/')
           : manifestUrl
         let text = pos.line === 0
           ? `.ve-header "Essay Title" ${imageId}\n\n`
           : `\n.ve-image ${imageId}\n`
-        let imagesList = this.getImageList(pos)
+        let imagesList = this.getTagItems(pos, '.ve-image')
         if (imagesList.length > 0) {
           let merged = imagesList.length === 1
             ? `.ve-image\n    - ${imagesList[0].slice(10)}\n`
@@ -474,10 +486,26 @@
         }
       },
 
-      addVideo(pos, url) {
+      addVideo(url, pos) {
         // pos.ch = 0
         this.easyMDE.codemirror.setSelection(pos, pos)
         this.easyMDE.codemirror.replaceSelection(`\n.ve-video ${url}\n`)
+      },
+
+      addMap(text, pos) {
+        if (pos) {
+          let tagList = this.getTagItems(pos, '.ve-map')
+          if (tagList.length > 0) {
+            let merged = tagList.join('\n') + '\n'
+            merged += `    - ${text}\n`
+            this.easyMDE.codemirror.setSelection({line:pos.line-tagList.length+1,ch:0}, {line:pos.line})
+            this.easyMDE.codemirror.replaceSelection(merged)
+          }
+  
+        } else {
+          text = `.ve-map ${text}\n`
+          this.easyMDE.codemirror.replaceSelection(text)
+        }
       },
 
       /*
@@ -506,13 +534,6 @@
       },
       */
 
-      paste(e) {
-        let pastedText = e.clipboardData?.getData('Text') || ''
-        console.log(this.isGeoCoords(pastedText))
-        if (this.isGeoCoords(pastedText)) pastedText = `.ve-map ${pastedText.replace(/\s/,'')}\n`
-        this.easyMDE.codemirror.replaceSelection(pastedText)
-      },
-
       isGeoCoords(s) {
         return /^[0-9\-\.]+, ?[0-9\-\.]+$/.test(s)
       },
@@ -523,32 +544,16 @@
         return await resp.text()
       },
   
-      getImageList(pos) {
+      getTagItems(pos, tag) {
         let lines = []
         let line = pos.line
         lines.push(this.easyMDE.codemirror.getLine(line))
-        while (line > 0 && lines[lines.length-1].trim() !== '' && lines[lines.length-1].indexOf('.ve-image') === -1) {
+        while (line > 0 && lines[lines.length-1].trim() !== '' && lines[lines.length-1].indexOf(tag) === -1) {
           line = --line
           lines.push(this.easyMDE.codemirror.getLine(line))
         }
-        return lines[lines.length-1].indexOf('.ve-image') === 0 ? lines.reverse() : []
+        return lines[lines.length-1].indexOf(tag) === 0 ? lines.reverse() : []
       },
-
-      insertAtCursor(pos, text) {
-        let imagesList = this.getImageList(pos)
-        if (imagesList.length > 0) {
-          let merged = imagesList.length === 1
-            ? `.ve-image\n    - ${imagesList[0].slice(10)}\n`
-            : imagesList.join('\n') + '\n'
-          merged += `    - ${text.split(/\s/).filter(x => x).slice(1).join(' ')}\n`
-          this.easyMDE.codemirror.setSelection({line:pos.line-imagesList.length+1,ch:0}, {line:pos.line})
-          this.easyMDE.codemirror.replaceSelection(merged)
-        } else {
-          pos.ch = 0
-          this.easyMDE.codemirror.setSelection(pos, pos)
-          this.easyMDE.codemirror.replaceSelection(text)
-        }
-      }
 
     },
     watch: {

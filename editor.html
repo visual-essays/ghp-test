@@ -132,11 +132,11 @@
     computed: {
       isLoggedIn() { return this.ghAuthToken !== null },
       webHost() { return isDev ? 'http://localhost:8080' : 'https://beta.juncture-digital.org' },
-      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays\//,'').replace(/\/README\.md/,'').replace(/\.md$/,'')}` : null }
+      link() { return this.contentPath ? `${this.webHost}/${this.contentPath.replace(/visual-essays\/essays\//,'').replace(/\/README\.md$/,'').replace(/\.md$/,'')}` : null }
     },
     created() {
       this.ghAuthToken = localStorage.getItem('gh-auth-token')
-      window.addEventListener('storage', (evt) => { this.ghAuthToken = localStorage.getItem('gh-auth-token') })
+      window.addEventListener('storage', (evt) => this.ghAuthToken = localStorage.getItem('gh-auth-token'))
     },
     mounted() {
       this.$refs.contentSelector.addEventListener('contentPathChanged', async (evt) => this.parseContentPath(evt.detail))
@@ -152,13 +152,13 @@
     },
     methods: {
 
-      isMarkdownFile(path) {
+      isFile(path) {
         let fname = path.split('?')[0].split('/').pop()
-        return fname.indexOf('.md') === fname.length-3
+        // return fname.indexOf('.md') === fname.length-3
+        return fname.indexOf('.') >= 0
       },
 
       async parseContentPath(newContentPath) {
-
         localStorage.setItem('pending-content-path', newContentPath)
 
         if (this.isPreviewActive) EasyMDE.togglePreview(this.easyMDE)
@@ -167,7 +167,7 @@
         
         // console.log(`parseContentPath: newContentPath=${newContentPath} priorContentPath=${priorContentPath}`)
 
-        if (newContentPath !== priorContentPath && priorContentPath && this.isMarkdownFile(priorContentPath)) {
+        if (newContentPath !== priorContentPath && priorContentPath && this.isFile(priorContentPath)) {
           let currentContent = this.easyMDE.value().trim()
           let currentHash = currentContent.hashCode()
           let lastRemoteHash = localStorage.getItem('last-remote-save-hash')
@@ -194,7 +194,7 @@
         this.userCanUpdate = await this.$refs.contentSelector.repositoryIsWriteable()
         // console.log(`editor.parseContentPath: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
 
-        if (this.isMarkdownFile(filePath)) {
+        if (this.isFile(filePath)) {
           let markdown
           if (newContentPath === localStorage.getItem('smde_juncture_path')) {
             markdown = localStorage.getItem('smde_juncture_content')
@@ -558,12 +558,31 @@
     },
     watch: {
       async isLoggedIn(isLoggedIn) {
-        this.userCanUpdate = this.$refs.contentSelector.repositoryIsWriteable
-          ? await this.$refs.contentSelector.repositoryIsWriteable()
-          : false
+        if (isLoggedIn) {
+          this.userCanUpdate = this.$refs.contentSelector.repositoryIsWriteable
+            ? await this.$refs.contentSelector.repositoryIsWriteable()
+            : false
+        } else {
+          Object.keys(localStorage).forEach(key => localStorage.removeItem(key))
+          this.easyMDE.value('')
+        }
       },
       userCanUpdate(canUpdate) {
         document.getElementById('save').style.display = this.userCanUpdate ? 'inline-block' : 'none'
+      },
+      ghAuthToken(ghAuthToken) {
+        if (ghAuthToken) {
+          fetch('https://api.github.com/user', {
+            headers: {
+              Accept: 'application/vnd.github+json', 
+              Authorization: `token ${ghAuthToken}`}
+            })
+            .then(resp => resp.json())
+            .then(user => { if (user) localStorage.setItem('gh-username', user.login) })
+        } else {
+          localStorage.removeItem('gh-username')
+          window.location = window.location.origin
+        }
       }
     }
   })
